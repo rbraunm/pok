@@ -16,5 +16,5 @@ services:
       - PYTHONUNBUFFERED=1
 networks:
   default:
-    external:
-      name: akk-stack_backend  
+    name: akk-stack_backend
+    external: true
