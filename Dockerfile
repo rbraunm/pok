@@ -5,7 +5,7 @@ RUN groupadd -g 1000 eqemu \
 
 WORKDIR /app
 
-COPY app/requirements.txt ./
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN chown -R eqemu:eqemu /app

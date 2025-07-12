@@ -1,6 +1,6 @@
 import os, importlib.util
 from flask import Flask, render_template, jsonify
-from db import getDb
+from api import getDb
 
 app = Flask(
     __name__,
@@ -11,7 +11,7 @@ app = Flask(
 def renderPage(header=None, body=None):
   return render_template("base.html", header=header or "", body=body or "")
 
-# Discover & register plugins
+# Discover & register blueprints
 plugin_endpoints = []
 for fname in os.listdir(os.path.dirname(__file__)):
     if not fname.endswith(".py") or fname in ("app.py", "db.py"):
@@ -29,8 +29,8 @@ for fname in os.listdir(os.path.dirname(__file__)):
         })
 
 @app.context_processor
-def inject_plugins():
-    return dict(plugins=plugin_endpoints)
+def inject_blueprints():
+    return dict(blueprints=plugin_endpoints)
 
 @app.route("/")
 def index():
