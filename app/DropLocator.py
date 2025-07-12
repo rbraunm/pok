@@ -1,141 +1,24 @@
 NAME = "Drop Locator"
 URL_PREFIX = "/droplocator"
 
-from flask import request, render_template_string, jsonify
+from flask import request, jsonify
 from db import getDb
 from collections import defaultdict
-
-TEMPLATE = """
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Drop Locator</title>
-    <style>
-      body { font-family: monospace; background: #2c3e50; color: #ecf0f1; margin: 2rem; }
-      h1 { margin-bottom: 1rem; }
-      form { margin-bottom: 2rem; }
-      input[type="text"] {
-        font-size: 1rem; padding: 0.5rem; width: 300px;
-        border-radius: 0.25rem; border: 1px solid #ccc;
-      }
-      button {
-        font-size: 1rem; padding: 0.5rem 1rem;
-        background: #1abc9c; color: white; border: none; border-radius: 0.25rem;
-      }
-      .autocomplete-suggestions {
-        background: white; color: black;
-        border: 1px solid #ccc;
-        max-height: 200px; overflow-y: auto;
-        position: absolute; z-index: 10;
-        width: 300px;
-      }
-      .autocomplete-suggestions div {
-        padding: 0.25rem 0.5rem;
-        cursor: pointer;
-      }
-      .autocomplete-suggestions div:hover {
-        background: #eee;
-      }
-      .zone { margin-bottom: 2rem; }
-      .zone h2 { background: #34495e; padding: 0.5rem; border-radius: 0.25rem; }
-      table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
-      th, td { border: 1px solid #7f8c8d; padding: 0.5rem; text-align: left; vertical-align: top; }
-      th { background: #1abc9c; color: white; }
-      tbody tr:nth-child(odd) { background: #34495e; }
-      tbody tr:nth-child(even) { background: #2c3e50; }
-      td.spawn-cell { white-space: pre-line; }
-      .no-results { color: #e74c3c; }
-    </style>
-  </head>
-  <body>
-    <h1>Drop Locator</h1>
-    <form action="{{ url_for('droplocator') }}" method="get" autocomplete="off">
-      <input type="text" id="itemInput" name="item_id" placeholder="Enter item ID or name" value="{{ itemId or '' }}">
-      <button type="submit">Search</button>
-      <div id="autocomplete" class="autocomplete-suggestions" style="display:none;"></div>
-    </form>
-
-    {% if itemId and not grouped %}
-      <p class="no-results">No drop locations found for this item.</p>
-    {% elif grouped %}
-      <h2>Drop Locations for Item {{ itemName }} ({{ itemId }})</h2>
-      {% for zoneName, entries in grouped.items() %}
-        <div class="zone">
-          <h3>{{ zoneName }}</h3>
-          <table>
-            <thead>
-              <tr>
-                <th>Table ID</th>
-                <th>Drops From</th>
-                <th>Base Chance</th>
-                <th>Multiplier</th>
-                <th>Effective Chance</th>
-                <th>Spawn Location(s)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for e in entries %}
-                <tr>
-                  <td>{{ e.loottableId }}</td>
-                  <td>{{ e.mobName }} (Level {{ e.mobLevel }})</td>
-                  <td>{{ "%.2f"|format(e.baseChance) }}%</td>
-                  <td>{{ e.multiplier }}×</td>
-                  <td>{{ "%.2f"|format(e.effectiveChance) }}%</td>
-                  <td class="spawn-cell">{{ e.spawnPoints }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% endfor %}
-    {% endif %}
-
-    <script>
-      const input = document.getElementById('itemInput');
-      const box = document.getElementById('autocomplete');
-
-      input.addEventListener('input', () => {
-        const q = input.value;
-        if (q.length < 2) return box.style.display = 'none';
-
-        fetch('{{ url_for("droplocator_search") }}?q=' + encodeURIComponent(q))
-          .then(res => res.json())
-          .then(data => {
-            if (!data.results.length) return box.style.display = 'none';
-            box.innerHTML = data.results.map(r =>
-              `<div data-id="${r.id}" data-name="${r.name}">${r.id} - ${r.name}</div>`
-            ).join('');
-            box.style.display = 'block';
-          });
-      });
-
-      box.addEventListener('click', (e) => {
-        const div = e.target.closest('div');
-        if (!div) return;
-        input.value = div.dataset.id;
-        box.style.display = 'none';
-      });
-
-      document.addEventListener('click', e => {
-        if (!box.contains(e.target) && e.target !== input) {
-          box.style.display = 'none';
-        }
-      });
-    </script>
-  </body>
-</html>
-"""
+from app import renderPage
+import re
 
 def register(app):
   @app.route(URL_PREFIX, methods=["GET"])
   def droplocator():
-    itemId = request.args.get("item_id")
+    itemIdRaw = request.args.get("item_id", "").strip()
+    itemId = None
     itemName = None
-    if itemId and itemId.isdigit():
-      itemId = int(itemId)
-    else:
-      itemId = None
+
+    match = re.search(r"\((\d+)\)$", itemIdRaw)
+    if match:
+      itemId = int(match.group(1))
+    elif itemIdRaw.isdigit():
+      itemId = int(itemIdRaw)
 
     grouped = defaultdict(list)
     if itemId is not None:
@@ -166,10 +49,10 @@ def register(app):
           nt.maxlevel,
           GROUP_CONCAT(
             CONCAT(
-              ROUND(s2.x, 1), ', ',
               ROUND(s2.y, 1), ', ',
+              ROUND(s2.x, 1), ', ',
               ROUND(s2.z, 1)
-            ) SEPARATOR '\\n'
+            ) SEPARATOR '<br>'
           ) AS spawn_points
         FROM lootdrop_entries     AS lde
         JOIN loottable_entries    AS le  ON lde.lootdrop_id = le.lootdrop_id
@@ -204,7 +87,71 @@ def register(app):
           "spawnPoints":     r["spawn_points"] or ""
         })
 
-    return render_template_string(TEMPLATE, itemId=itemId, itemName=itemName, grouped=grouped)
+    header = f"""
+<h1>Drop Locations for {'(ID ' + str(itemId) + ')' if itemId and not itemName else (itemName + ' (' + str(itemId) + ')') if itemName else ''}</h1>
+<form action="{URL_PREFIX}" method="get" autocomplete="off">
+  <input type="text" id="itemInput" name="item_id" placeholder="Enter item ID or name" value="{itemName + f' ({itemId})' if itemId and itemName else itemId or ''}">
+  <button type="submit">Search</button>
+  <div id="autocomplete" class="autocomplete-suggestions" style="display:none;"></div>
+</form>
+<script>
+const input = document.getElementById('itemInput');
+const box = document.getElementById('autocomplete');
+
+input.addEventListener('focus', () => {{
+  input.value = "";
+  box.style.display = "none";
+}});
+
+input.addEventListener('input', () => {{
+  const q = input.value;
+  if (q.length < 2) return box.style.display = 'none';
+
+  fetch('{URL_PREFIX}/search?q=' + encodeURIComponent(q))
+    .then(res => res.json())
+    .then(data => {{
+      if (!data.results.length) return box.style.display = 'none';
+      box.innerHTML = data.results.map(r =>
+        `<div data-id="${{r.id}}" data-name="${{r.name}}">${{r.name}} (${{r.id}})</div>`
+      ).join('');
+      box.style.display = 'block';
+    }});
+}});
+
+box.addEventListener('click', (e) => {{
+  const div = e.target.closest('div');
+  if (!div) return;
+  const displayValue = `${{div.dataset.name}} (${{div.dataset.id}})`;
+  input.value = displayValue;
+
+  const form = input.closest("form");
+  const hiddenInput = document.createElement("input");
+  hiddenInput.type = "hidden";
+  hiddenInput.name = "item_id";
+  hiddenInput.value = div.dataset.id;
+  form.appendChild(hiddenInput);
+  form.submit();
+}});
+
+document.addEventListener('click', e => {{
+  if (!box.contains(e.target) && e.target !== input) {{
+    box.style.display = 'none';
+  }}
+}});
+</script>
+"""
+
+    if itemId and not grouped:
+      body = "<p class='no-results'>No drop locations found for this item.</p>"
+    else:
+      body = ""
+      for zoneName, entries in grouped.items():
+        body += f"<div class='zone'><h2>{zoneName}</h2><table><thead><tr><th>Drops From</th><th>Base Chance</th><th>Multiplier</th><th>Effective Chance</th><th>Spawn Location(s)</th></tr></thead><tbody>"
+        for e in entries:
+          body += f"<tr><td>{e['mobName']} (Level {e['mobLevel']})</td><td>{e['baseChance']:.2f}%</td><td>{e['multiplier']}×</td><td>{e['effectiveChance']:.2f}%</td><td class='spawn-cell'>{e['spawnPoints']}</td></tr>"
+        body += "</tbody></table></div>"
+
+    return renderPage(header, body)
 
   @app.route(f"{URL_PREFIX}/search")
   def droplocator_search():

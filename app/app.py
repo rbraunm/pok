@@ -1,4 +1,3 @@
-# /opt/eqemu/pok/app/app.py
 import os, importlib.util
 from flask import Flask, render_template, jsonify
 from db import getDb
@@ -8,6 +7,9 @@ app = Flask(
     static_folder="static",
     template_folder="templates"
 )
+
+def renderPage(header=None, body=None):
+  return render_template("base.html", header=header or "", body=body or "")
 
 # Discover & register plugins
 plugin_endpoints = []
@@ -26,9 +28,19 @@ for fname in os.listdir(os.path.dirname(__file__)):
             "url": getattr(module, "URL_PREFIX", f"/{mod_name}")
         })
 
+@app.context_processor
+def inject_plugins():
+    return dict(plugins=plugin_endpoints)
+
 @app.route("/")
 def index():
-    return render_template("index.html", plugins=plugin_endpoints)
+  header = "<h1>EQ Tools Dashboard</h1>"
+  body = """
+    <p>Welcome to the EQ Tools Dashboard.</p>
+    <p>This interface was created to support EverQuest server administration, data exploration, and tooling.</p>
+    <p>Select a tool from the left to begin.</p>
+  """
+  return renderPage(header, body)
 
 @app.route("/api/status")
 def apiStatus():
@@ -40,4 +52,3 @@ def apiStatus():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-

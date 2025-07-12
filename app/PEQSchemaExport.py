@@ -1,55 +1,9 @@
 NAME = "PEQ Schema Export"
-URL_PREFIX = "/schema"
+URL_PREFIX = "/peqschemaexport"
 
-from flask import Response, render_template_string, request
+from flask import Response, request, url_for
 from db import getDb
-
-TEMPLATE = """
-<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>PEQ Schema Export</title>
-    <style>
-      body { font-family: monospace; background: #2c3e50; color: #ecf0f1; margin: 2rem; }
-      h1 { margin-bottom: 1rem; }
-      .container { position: relative; }
-      pre {
-        background: #1e272e;
-        color: #dff9fb;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        overflow-x: auto;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        max-height: 80vh;
-      }
-      a.download-btn {
-        position: absolute;
-        top: 0;
-        right: 0;
-        margin: 1rem;
-        background: #1abc9c;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 0.25rem;
-        text-decoration: none;
-        font-weight: bold;
-      }
-      a.download-btn:hover {
-        background: #16a085;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>PEQ Schema Export</h1>
-    <div class="container">
-      <a class="download-btn" href="{{ url_for('exportSchema') }}?download=1">Download .sql</a>
-      <pre>{{ data }}</pre>
-    </div>
-  </body>
-</html>
-"""
+from app import renderPage
 
 def register(app):
   @app.route(URL_PREFIX, methods=["GET"])
@@ -73,4 +27,12 @@ def register(app):
         headers={"Content-Disposition": "attachment; filename=PEQSchemaExport.sql"}
       )
 
-    return render_template_string(TEMPLATE, data=txt)
+    header = f'''
+      <div class="headerRow">
+        <h1>PEQ Schema Export</h1>
+        <a class="download-btn" href="{url_for("exportSchema")}?download=1">Download .sql</a>
+      </div>
+    '''
+    body = f'<pre>{txt}</pre>'
+
+    return renderPage(header, body)
