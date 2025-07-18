@@ -114,7 +114,7 @@ with SCPClient(ssh.get_transport()) as scp:
 
 # --- Run remote Docker commands ---
 print("Performing docker compose up/down...")
-for cmd in ["docker compose down", "docker compose up -d"]:
+for cmd in ["docker compose down", "docker compose build --no-cache && docker compose up -d"]:
   fullCmd = f"cd ~/{REMOTE_PATH} && {cmd}"
   stdin, stdout, stderr = ssh.exec_command(fullCmd)
   print(stdout.read().decode(), end="")

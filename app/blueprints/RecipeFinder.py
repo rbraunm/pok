@@ -1,11 +1,12 @@
 NAME = "Recipe Finder"
 
 from pathlib import Path
-URL_PREFIX = "/" + Path(__file__).stem.lower()
+URL_PREFIX = "/" + Path(__file__).stem
 
 from flask import request, jsonify
 from app import renderPage
 import re
+
 from api.models.recipes import get_recipe_name, search_recipes, get_recipe_details
 
 def register(app):

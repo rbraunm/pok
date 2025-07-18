@@ -5,8 +5,8 @@ def get_drop_locations(item_id:int):
     SELECT
       lt.id                        AS loottable_id,
       lde.chance                   AS base_chance,
-      le.multiplier                AS multiplier,
-      lde.chance * le.multiplier   AS effective_chance,
+      ROUND(le.multiplier, 2) AS multiplier,
+      ROUND(lde.chance * le.multiplier, 2) AS effective_chance,
       z.short_name                 AS zone_shortname,
       z.long_name                  AS zone_longname,
       nt.name                      AS npc_name,

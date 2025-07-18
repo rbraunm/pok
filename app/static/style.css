@@ -103,15 +103,52 @@ h2 {
 
 .headerRow {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.headerLeft {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 250px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .headerRow h1 {
   margin: 0;
 }
 
+.headerTitle {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.headerTitle h1 {
+  margin: 0;
+}
+
+.headerControls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.headerControls .download-btn {
+  margin: 0;
+}
 
 form {
   position: relative;
@@ -195,6 +232,20 @@ ul {
   padding: 0 0 0 1.25rem;
 }
 
+.row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 th, td {
   padding: 0.5rem 0.75rem;
   border-bottom: 1px solid #445;
@@ -213,4 +264,195 @@ th {
 
 tr:nth-child(even) td {
   background: rgba(255, 255, 255, 0.03);
+}
+
+.export-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tab-btn {
+  background: #444;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  font-weight: bold;
+  transition: background 0.3s;
+}
+
+.tab-btn:hover,
+.tab-btn.active {
+  background: #007acc;
+}
+
+.tab-section {
+  display: none;
+}
+
+.tab-section.active {
+  display: block;
+}
+
+.export-list {
+  list-style: none;
+  padding: 0;
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.export-list li {
+  cursor: pointer;
+  padding: 0.35rem 0.75rem;
+  background: #3b4b5a;
+  border-left: 4px solid #1abc9c;
+  color: #ecf0f1;
+  border-radius: 4px;
+  transition: background 0.2s, padding 0.2s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  line-height: 1.25;
+}
+
+.export-list li:hover {
+  background: #4b5c6c;
+}
+
+.data-container {
+  max-height: 0;
+  overflow: scroll;
+  transition: max-height 0.3s ease, padding 0.3s ease;
+  background: #1e272e;
+  border-radius: 6px;
+  font-family: monospace;
+  padding: 0 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.data-controls {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.export-list li.expanded .data-container {
+  max-height: 500px;
+  padding: 0.75rem;
+}
+
+.data-viewer {
+  white-space: pre-wrap;
+  overflow-x: auto;
+  font-size: 0.85rem;
+  color: #dff9fb;
+  margin-top: 0.5rem;
+  background: transparent;
+  padding: 0;
+  cursor: text;
+}
+
+.inline-download {
+  float: right;
+  margin-bottom: 0.25rem;
+  background: #1abc9c;
+  color: white;
+  border: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.export-list li.expanded .inline-download.hidden {
+  display: inline-block;
+}
+
+.inline-download.hidden {
+  display: none;
+}
+
+.inline-download:hover {
+  background: #16a085;
+}
+
+.filter-box {
+  width: 100%;
+  padding: 0.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #ecf0f1;
+  color: #2c3e50;
+}
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  background: #34495e;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.pagination a {
+  color: #1abc9c;
+  text-decoration: none;
+  padding: 0.3rem 0.5rem;
+  background: #2c3e50;
+  border-radius: 0.3rem;
+  transition: background 0.2s ease;
+}
+
+.pagination a:hover {
+  background: #3c5c6e;
+}
+
+.pagination strong {
+  padding: 0.3rem 0.5rem;
+  background: #1abc9c;
+  border-radius: 0.3rem;
+  color: white;
+}
+
+.pagination form {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.pagination input[type="number"] {
+  width: 60px;
+  font-size: 0.9rem;
+  padding: 0.3rem;
+  border: 1px solid #999;
+  border-radius: 0.3rem;
+  background: #ecf0f1;
+  color: #2c3e50;
+}
+
+.pagination button {
+  padding: 0.3rem 0.75rem;
+  font-size: 0.9rem;
+  background: #1abc9c;
+  border: none;
+  color: white;
+  border-radius: 0.3rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.pagination button:hover {
+  background: #16a085;
 }

@@ -11,4 +11,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN chown -R eqemu:eqemu /app
 USER eqemu
 
-CMD ["gunicorn", "--chdir", "/app/web", "--bind", "0.0.0.0:5000", "app:app"]
+ENV POK_DEBUG=false
+
+CMD ["gunicorn", "--chdir", "/app/web", "--bind", "0.0.0.0:8202", "app:app"]
+

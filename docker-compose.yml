@@ -11,8 +11,9 @@ services:
       - /opt/eqemu/akk-stack/server:/app/server:ro
       - /opt/eqemu/pok/app:/app/web:ro
     ports:
-      - "8000:5000"
+      - "8202:8202"
     environment:
+      - POK_DEBUG=true
       - PYTHONUNBUFFERED=1
 networks:
   default:
