@@ -1,4 +1,4 @@
-from api import getDb
+from api.db import getDb
 import pymysql.cursors
 import re
 

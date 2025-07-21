@@ -1,4 +1,4 @@
-from api import getDb
+from api.db import getDb
 
 def list_tables():
   sql = "SHOW TABLES"

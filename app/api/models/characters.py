@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from api import getDb
+from api.db import getDb
 
 def search_characters(query: str, limit: int = 20) -> List[Dict[str, Any]]:
   sql = """

@@ -1,4 +1,4 @@
-from api import getDb
+from api.db import getDb
 
 def get_recipe_name(recipe_id:int):
   sql = "SELECT name FROM recipes WHERE id = %s"

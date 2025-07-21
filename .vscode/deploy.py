@@ -1,16 +1,20 @@
 import os
 import sys
 import subprocess
+import datetime
+import re
 
-# --- Ensure dependencies are installed ---
+def log(message):
+  print(f"[{datetime.datetime.now().isoformat(sep=' ', timespec='seconds')}] {message}")
+
 def ensure(module, pipName=None):
   try:
     __import__(module)
   except ImportError:
     pipName = pipName or module
-    print(f"Module '{module}' not found. Installing '{pipName}'...")
+    log(f"Module '{module}' not found. Installing '{pipName}'...")
     subprocess.check_call([sys.executable, "-m", "pip", "install", pipName])
-    print(f"'{pipName}' installed successfully.\n")
+    log(f"'{pipName}' installed successfully.\n")
 
 ensure("paramiko")
 ensure("scp")
@@ -21,13 +25,41 @@ import getpass
 import keyring
 from scp import SCPClient
 
-# --- Configuration ---
 SSH_HOST = "10.111.111.211"
 SSH_USER = "eqemu"
 REMOTE_PATH = "pok"
 CRED_SERVICE = f"deploy:{SSH_USER}@{SSH_HOST}"
 
-# --- Get password from keyring or prompt ---
+def bumpAppVersion():
+  appPy = "app/app.py"
+  if not os.path.isfile(appPy):
+    sys.exit(f"{appPy} not found.")
+
+  with open(appPy, "r", encoding="utf-8") as f:
+    lines = f.readlines()
+
+  versionPattern = re.compile(r"^APP_VERSION\s*=\s*['\"](\d+)\.(\d+)\.(\d+)['\"]")
+  newLines = []
+  updated = False
+
+  for line in lines:
+    match = versionPattern.match(line)
+    if match:
+      major, minor, patch = map(int, match.groups())
+      patch += 1
+      newVersion = f"{major}.{minor}.{patch}"
+      log(f"Bumping APP_VERSION to {newVersion}")
+      newLines.append(f'APP_VERSION = "{newVersion}"\n')
+      updated = True
+    else:
+      newLines.append(line)
+
+  if not updated:
+    sys.exit("APP_VERSION not found in app.py.")
+
+  with open(appPy, "w", encoding="utf-8") as f:
+    f.writelines(newLines)
+
 def getPassword():
   return keyring.get_password(CRED_SERVICE, SSH_USER)
 
@@ -36,7 +68,6 @@ def promptAndStorePassword():
   keyring.set_password(CRED_SERVICE, SSH_USER, pw)
   return pw
 
-# --- Attempt to connect with retries ---
 ssh = paramiko.SSHClient()
 ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
@@ -48,7 +79,7 @@ for attempt in range(3):
     ssh.connect(SSH_HOST, username=SSH_USER, password=password)
     break
   except paramiko.AuthenticationException:
-    print("Authentication failed.")
+    log("Authentication failed.")
     if attempt == 2:
       sys.exit("Too many failed attempts. Exiting.")
     keyring.delete_password(CRED_SERVICE, SSH_USER)
@@ -56,15 +87,14 @@ for attempt in range(3):
   except Exception as e:
     sys.exit(f"SSH connection error: {e}")
 
-# --- Prepare remote directory ---
-print(f"Preparing ~/{REMOTE_PATH} on remote...")
+log(f"Preparing ~/{REMOTE_PATH} on remote...")
 
 checkCmd = f"test -d ~/{REMOTE_PATH}"
 stdin, stdout, stderr = ssh.exec_command(checkCmd)
 exitStatus = stdout.channel.recv_exit_status()
 
 if exitStatus == 0:
-  print(f"Remote path ~/{REMOTE_PATH} exists. Deleting its contents...")
+  log(f"Remote path ~/{REMOTE_PATH} exists. Deleting its contents...")
   clearCmd = f"rm -rf ~/{REMOTE_PATH}/*"
   stdin, stdout, stderr = ssh.exec_command(clearCmd)
   errors = stderr.read().decode().strip()
@@ -72,7 +102,7 @@ if exitStatus == 0:
     ssh.close()
     sys.exit(f"Error clearing ~/{REMOTE_PATH}: {errors}")
 else:
-  print(f"Remote path ~/{REMOTE_PATH} does not exist. Creating it...")
+  log(f"Remote path ~/{REMOTE_PATH} does not exist. Creating it...")
   createCmd = f"mkdir -p ~/{REMOTE_PATH}"
   stdin, stdout, stderr = ssh.exec_command(createCmd)
   errors = stderr.read().decode().strip()
@@ -80,7 +110,6 @@ else:
     ssh.close()
     sys.exit(f"Error creating ~/{REMOTE_PATH}: {errors}")
 
-# --- Exclusion logic ---
 def isValidPath(path):
   parts = os.path.normpath(path).split(os.sep)
   for i in range(len(parts) - 1):
@@ -89,8 +118,8 @@ def isValidPath(path):
   filename = parts[-1]
   return filename not in {"README.md", "pok.code-workspace"}
 
-# --- Upload files ---
-print("Uploading files...")
+bumpAppVersion()
+log("Uploading files...")
 with SCPClient(ssh.get_transport()) as scp:
   createdDirs = set()
   for root, dirs, files in os.walk("."):
@@ -104,21 +133,19 @@ with SCPClient(ssh.get_transport()) as scp:
         remotePath = os.path.join(REMOTE_PATH, relPath).replace("\\", "/")
         remoteDir = os.path.dirname(remotePath)
 
-        # Ensure the remote directory exists (but avoid duplicates)
         if remoteDir not in createdDirs:
           ssh.exec_command(f"mkdir -p ~/{remoteDir}")
           createdDirs.add(remoteDir)
 
-        print(f"Uploading ~/{remotePath}")
+        log(f"Uploading ~/{remotePath}")
         scp.put(fullPath, remote_path=remotePath)
 
-# --- Run remote Docker commands ---
-print("Performing docker compose up/down...")
+log("Performing docker compose up/down...")
 for cmd in ["docker compose down", "docker compose build --no-cache && docker compose up -d"]:
   fullCmd = f"cd ~/{REMOTE_PATH} && {cmd}"
   stdin, stdout, stderr = ssh.exec_command(fullCmd)
-  print(stdout.read().decode(), end="")
-  print(stderr.read().decode(), end="")
+  log(stdout.read().decode().strip())
+  log(stderr.read().decode().strip())
 
 ssh.close()
-print("Deployment complete.")
+log("Deployment complete.")

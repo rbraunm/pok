@@ -5,13 +5,18 @@ RUN groupadd -g 1000 eqemu \
 
 WORKDIR /app
 
+COPY app ./web/
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+COPY entrypoint.sh ./
 
 RUN chown -R eqemu:eqemu /app
+RUN pip install --no-cache-dir -r requirements.txt
+RUN chmod +x ./entrypoint.sh
+
 USER eqemu
 
 ENV POK_DEBUG=false
+ENV PYTHONPATH=/app/web
 
-CMD ["gunicorn", "--chdir", "/app/web", "--bind", "0.0.0.0:8202", "app:app"]
+ENTRYPOINT ["./entrypoint.sh"]
 

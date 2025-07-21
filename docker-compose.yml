@@ -9,7 +9,6 @@ services:
     user: "1000:1000"
     volumes:
       - /opt/eqemu/akk-stack/server:/app/server:ro
-      - /opt/eqemu/pok/app:/app/web:ro
     ports:
       - "8202:8202"
     environment:

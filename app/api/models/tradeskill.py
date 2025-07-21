@@ -1,4 +1,4 @@
-from api import getDb
+from api.db import getDb
 
 def get_recipes_for_item(item_id:int):
   sql = """

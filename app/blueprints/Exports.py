@@ -3,10 +3,8 @@ NAME = "Exports"
 from pathlib import Path
 URL_PREFIX = "/" + Path(__file__).stem
 
-from flask import Response
-from app import renderPage, PoKJSONEncoder
-import json
-
+from flask import Response, json
+from web.utils import renderPage, PoKJSONEncoder
 from api.models.exports import get_sample
 from api.models.schema import list_tables, describe_table
 
@@ -15,7 +13,7 @@ def register(app):
   def exportsHome():
     dataTables = list_tables()
     schemaTables = list_tables()
-    header = f'''
+    htmlContent = f'''
 <div class="headerRow">
   <div class="headerLeft">
     <h1>{NAME}</h1>
@@ -47,7 +45,7 @@ def register(app):
     dataLinks = makeListBlock("data", dataTables)
     schemaLinks = makeListBlock("schema", schemaTables)
 
-    body = f'''
+    htmlContent += f'''
 <div id="data" class="tab-section active">
   <ul class="export-list" id="data-list">{dataLinks}</ul>
 </div>
@@ -175,7 +173,7 @@ function downloadSingle(event, type, table) {{
 }}
 </script>
 '''
-    return renderPage(header, body)
+    return renderPage(htmlContent)
 
   @app.route(f"{URL_PREFIX}/data/<table>/raw")
   def exportDataRaw(table):

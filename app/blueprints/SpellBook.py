@@ -1,9 +1,9 @@
 NAME = "Spell Book"
 
 from pathlib import Path
-import html, json
-from flask import request, jsonify
-from app import renderPage
+import html
+from flask import request
+from web.utils import renderPage
 from api.models.characters import search_characters, get_character
 from api.models.spells import get_spells_for_character
 
@@ -44,17 +44,16 @@ def register(app):
   def spellbook():
     char_query = request.args.get("character", "").strip()
     char_id = request.args.get("charId")
-    body = "<h1>Spell Book</h1>"
-
+    htmlContent = ""
     if char_query:
       results = search_characters(char_query)
-      body += "<h2>Character Search Results</h2><ul>"
+      htmlContent += "<h2>Character Search Results</h2><ul>"
       for c in results:
-        body += (
+        htmlContent += (
           f"<li><a href='?charId={c['id']}'>{html.escape(c['name'])} "
           f"(Level {c['level']} {c['class']})</a></li>"
         )
-      body += "</ul>"
+      htmlContent += "</ul>"
 
     if char_id:
       character = get_character(int(char_id))
@@ -62,9 +61,9 @@ def register(app):
         spells = get_spells_for_character(character["id"])
         grouped = group_spells_by_level(spells)
 
-        body += render_character_summary(character)
-        body += render_spell_list(grouped)
+        htmlContent += render_character_summary(character)
+        htmlContent += render_spell_list(grouped)
       else:
-        body += "<p>Character not found.</p>"
+        htmlContent += "<p>Character not found.</p>"
 
-    return renderPage(NAME, body)
+    return renderPage(htmlContent)

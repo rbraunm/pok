@@ -5,19 +5,14 @@
     <title>{{ title or "Pane of Knowledge" }}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='everquest_tooltip.js') }}" defer></script>
   </head>
   <body>
     <header>
       <h1>Pane of Knowledge</h1>
     </header>
     <div>
-      <nav>
-        <ul>
-          {% for plugin in plugins %}
-          <li><a href="{{ plugin.url }}">{{ plugin.name }}</a></li>
-          {% endfor %}
-        </ul>
-      </nav>
+      <nav>{{ nav|safe }}</nav>
       <main>
         <header>{{ header|safe }}</header>
         <section>{{ body|safe }}</section>

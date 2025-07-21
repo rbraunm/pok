@@ -395,34 +395,52 @@ tr:nth-child(even) td {
 
 .pagination {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
-  margin-top: 1rem;
+  margin: 1rem auto 0 auto;
   background: #34495e;
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
   font-size: 0.95rem;
+  width: fit-content;
+}
+
+.pagination a,
+.pagination strong,
+.pagination span {
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.3rem;
+  font-weight: normal;
 }
 
 .pagination a {
   color: #1abc9c;
   text-decoration: none;
-  padding: 0.3rem 0.5rem;
   background: #2c3e50;
-  border-radius: 0.3rem;
   transition: background 0.2s ease;
 }
 
-.pagination a:hover {
+.pagination a:hover:not(.active):not(.disabled) {
   background: #3c5c6e;
 }
 
-.pagination strong {
-  padding: 0.3rem 0.5rem;
+.pagination .active {
   background: #1abc9c;
-  border-radius: 0.3rem;
   color: white;
+  pointer-events: none;
+}
+
+.pagination .disabled {
+  color: #7f8c8d;
+  background: #2c3e50;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.pagination .ellipsis {
+  color: #bdc3c7;
 }
 
 .pagination form {
@@ -455,4 +473,70 @@ tr:nth-child(even) td {
 
 .pagination button:hover {
   background: #16a085;
+}
+
+#results li {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.4;
+}
+
+#results li small {
+  display: block;
+  color: #bdc3c7;
+  margin-top: 0.2rem;
+  font-size: 0.85em;
+}
+
+.result-item {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.25rem;
+  padding: 0.4rem 0.2rem;
+  border-bottom: 1px solid #3c5c6e;
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0.5rem;
+}
+
+.result-header .item-name {
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.result-header .item-stats {
+  font-size: 0.9em;
+  color: #bdc3c7;
+}
+
+.result-icons {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.result-details {
+  display: none;
+  width: 100%;
+  background: #34495e;
+  border-left: 3px solid #1abc9c;
+  border-radius: 4px;
+  padding: 0.5rem;
+  box-sizing: border-box;
+  font-size: 0.9em;
+}
+
+.drop-source {
+  margin-bottom: 0.5rem;
+}
+
+.drop-source:last-child {
+  margin-bottom: 0;
 }

@@ -3,10 +3,9 @@ NAME = "Recipe Finder"
 from pathlib import Path
 URL_PREFIX = "/" + Path(__file__).stem
 
-from flask import request, jsonify
-from app import renderPage
 import re
-
+from flask import request, json
+from web.utils import renderPage
 from api.models.recipes import get_recipe_name, search_recipes, get_recipe_details
 
 def register(app):
@@ -28,29 +27,26 @@ def register(app):
     else:
       recipeDetails = None
 
-    header = f"""
-<div class="headerRow">
-  <h1>{NAME}</h1>
-</div>"""
+    htmlContent = f"""
+      <div class="headerRow">
+        <h1>{NAME}</h1>
+      </div>"""
 
-    body = ""
     if recipeDetails:
-      body += f"<h2>{recipeName} (ID {recipeId})</h2>"
-      body += f"<p>Tradeskill: {recipeDetails.get('tradeskill')} | Skill Needed: {recipeDetails.get('skillneeded')} | Trivial: {recipeDetails.get('trivial')}</p>"
-      body += "<h3>Components</h3><ul>"
+      htmlContent += f"<h2>{recipeName} (ID {recipeId})</h2>"
+      htmlContent += f"<p>Tradeskill: {recipeDetails.get('tradeskill')} | Skill Needed: {recipeDetails.get('skillneeded')} | Trivial: {recipeDetails.get('trivial')}</p>"
+      htmlContent += "<h3>Components</h3><ul>"
       for e in recipeDetails['entries']:
         if e['success'] == 0:
-          body += f"<li>{e['componentcount']} × {e['name']} (ID {e['item_id']})</li>"
-      body += "</ul>"
+          htmlContent += f"<li>{e['componentcount']} × {e['name']} (ID {e['item_id']})</li>"
+      htmlContent += "</ul>"
     elif recipeId:
-      body += "<p>No recipe found.</p>"
+      htmlContent += "<p>No recipe found.</p>"
 
-    return renderPage(header, body)
+    return renderPage(htmlContent)
 
   @app.route(f"{URL_PREFIX}/search")
   def recipe_search():
     q = request.args.get("q", "").strip()
-    if not q:
-      return jsonify(results=[])
-    results = search_recipes(q)
-    return jsonify(results=[{'id': r['id'], 'name': r['name']} for r in results])
+    results = search_recipes(q) if q else []
+    return json.dumps({"results": [{'id': r['id'], 'name': r['name']} for r in results]})
