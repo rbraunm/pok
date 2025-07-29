@@ -11,20 +11,29 @@
  * =======================================================================
  */
 const SLOT_BITMASKS = {
-  7:  [1 << 2,  "Head"],
-  8:  [1 << 17, "Chest"],
-  9:  [1 << 7,  "Arms"],
-  10: [1 << 9,  "Wrist"],
-  11: [1 << 12, "Hands"],
-  12: [1 << 18, "Legs"],
-  13: [1 << 19, "Feet"],
-  14: [1 << 8,  "Back"],
-  30: [1 << 21, "Primary"],
-  31: [1 << 22, "Secondary"],
-  3:  [1 << 1,  "Ear"],
-  4:  [1 << 15, "Finger"],
+  0:  [1 << 0,  "Charm"],
+  1:  [1 << 1,  "Ear"],
+  2:  [1 << 2,  "Head"],
+  3:  [1 << 3,  "Face"],
+  /* Ear 2 */
   5:  [1 << 5,  "Neck"],
-  2:  [1 << 11, "Range"]
+  6:  [1 << 6, "Shoulders"],
+  7:  [1 << 7,  "Arms"],
+  8:  [1 << 8,  "Back"],
+  9:  [1 << 9,  "Wrist"],
+  /* Wrist 2 */
+  11:  [1 << 11, "Range"],
+  12:  [1 << 12, "Hands"],
+  13:  [1 << 13, "Primary"],
+  14:  [1 << 14, "Secondary"],
+  15:  [1 << 15, "Finger"],
+  /* Finger 2 */
+  17:  [1 << 17, "Chest"],
+  18:  [1 << 18, "Legs"],
+  19:  [1 << 19, "Feet"],
+  20:  [1 << 20, "Waist"],
+  21:  [1 << 21, "PowerSource"],
+  22:  [1 << 22, "Ammo"],
 };
 
 function decodeSlots(slotBitmask) {
@@ -88,6 +97,100 @@ const RACE_BITMASK = {
   "FRG": 1 << 14  // Froglok
 };
 
+const RESIST_TYPES = {
+  0: "Unresistable",
+  1: "Magic",
+  2: "Fire",
+  3: "Cold",
+  4: "Poison",
+  5: "Disease",
+  6: "Chromatic",
+  7: "Prismatic",
+  8: "Physical",
+  9: "Corruption"
+};
+
+const SKILLS = {
+  0: "1H Blunt",
+  1: "1H Slashing",
+  2: "2H Blunt",
+  3: "2H Slashing",
+  4: "Abjuration",
+  5: "Alteration",
+  6: "Apply Poison",
+  7: "Archery",
+  8: "Backstab",
+  9: "Bind Wound",
+  10: "Bash",
+  11: "Block",
+  12: "Brass Instruments",
+  13: "Channeling",
+  14: "Conjuration",
+  15: "Defense",
+  16: "Disarm",
+  17: "Disarm Traps",
+  18: "Divination",
+  19: "Dodge",
+  20: "Double Attack",
+  21: "Dragon Punch",
+  22: "Dual Wield",
+  23: "Eagle Strike",
+  24: "Evocation",
+  25: "Feign Death",
+  26: "Flying Kick",
+  27: "Forage",
+  28: "Hand to Hand",
+  29: "Hide",
+  30: "Kick",
+  31: "Meditate",
+  32: "Mend",
+  33: "Offense",
+  34: "Parry",
+  35: "Pick Lock",
+  36: "1H Piercing",
+  37: "Riposte",
+  38: "Round Kick",
+  39: "Safe Fall",
+  40: "Sense Heading",
+  41: "Singing",
+  42: "Sneak",
+  43: "Specialize Abjure",
+  44: "Specialize Alteration",
+  45: "Specialize Conjuration",
+  46: "Specialize Divination",
+  47: "Specialize Evocation",
+  48: "Pick Pockets",
+  49: "Stringed Instruments",
+  50: "Swimming",
+  51: "Throwing",
+  52: "Tiger Claw",
+  53: "Tracking",
+  54: "Wind Instruments",
+  55: "Fishing",
+  56: "Make Poison",
+  57: "Tinkering",
+  58: "Research",
+  59: "Alchemy",
+  60: "Baking",
+  61: "Tailoring",
+  62: "Sense Traps",
+  63: "Blacksmithing",
+  64: "Fletching",
+  65: "Brewing",
+  66: "Alcohol Tolerance",
+  67: "Begging",
+  68: "Jewelry Making",
+  69: "Pottery",
+  70: "Percussion Instruments",
+  71: "Intimidation",
+  72: "Berserking",
+  73: "Taunt",
+  74: "Frenzy",
+  75: "Remove Trap",
+  76: "Triple Attack",
+  77: "2H Piercing"
+}
+
 
 function decodeRaces(raceBitmask) {
   const allRaceMask = Object.values(RACE_BITMASK).reduce((sum, mask) => sum | mask, 0);
@@ -97,6 +200,28 @@ function decodeRaces(raceBitmask) {
     .filter(([_, mask]) => (raceBitmask & mask) !== 0)
     .map(([name]) => name)
     .join(' ') || 'None';
+}
+
+const SIZE_LABELS = ['Tiny', 'Small', 'Medium', 'Large', 'Giant', 'Massive', 'Colossal'];
+
+function formatSize(size) {
+  return (size != null && SIZE_LABELS[size]) ? SIZE_LABELS[size] : 'Unknown';
+}
+
+function formatDuration(totalSeconds) {
+  totalSeconds = Math.round(Number(totalSeconds)/1000);
+  if (!totalSeconds || totalSeconds <= 0) return 'Instant';
+
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (seconds > 0) parts.push(`${seconds}s`);
+
+  return parts.join(' ');
 }
 
 (function injectTooltipStyles() {
@@ -153,13 +278,18 @@ function decodeRaces(raceBitmask) {
     z-index: 10000 !important;
     opacity: 0;
   }
+
+  span.eqtooltip { cursor: pointer !important; }
   
-  .eqtooltip-container .name         { font-size: 18px !important; font-weight: 700 !important; margin-bottom: 2px !important; }
-  .eqtooltip-container .flags        { color: #E0DFDB !important; }
-  .eqtooltip-container .section      { display: block !important; margin: 2px 0 !important; line-height: 1.4 !important; }
-  .eqtooltip-container .label        { font-weight: 700 !important; }
-  .eqtooltip-container .stat-heroic  { color: #6cf !important; }
-  .eqtooltip-container .effect       { color: #FFDF00 !important; }
+  .eqtooltip-container .name            { font-size: 18px !important; font-weight: 700 !important; margin-bottom: 2px !important; }
+  .eqtooltip-container .flags           { color: #E0DFDB !important; }
+  .eqtooltip-container .section         { display: block !important; margin: 2px 0 !important; line-height: 1.4 !important; }
+  .eqtooltip-container .label           { font-weight: 700 !important; }
+  .eqtooltip-container .stat-heroic     { color: #6cf !important; }
+  .eqtooltip-container .effect          { color: #FFDF00 !important; }
+  .eqtooltip-container .spell-wrapper   { margin-left: 44px !important; position: relative !important; }
+  .eqtooltip-container .icon-container  { position: absolute !important; overflow: hidden !important; top: 0px !important; left: -42px !important; width: 40px !important; height: 40px !important; padding: 0 !important; background-origin: border-box !important; background-clip: padding-box, border-box !important; border: 2px solid transparent !important; border-radius: 4px !important; border-image: linear-gradient(135deg, #f9e49a, #d7b95d, #b68d27, #d7b95d, #f9e49a) 1 stretch !important; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important; background-color: rgba(4, 16, 40, 0.85) !important; }
+  .eqtooltip-container .spell-icon      { width: 40px !important; height: 40px !important; background-repeat: no-repeat !important; background-size: 240px 240px !important; image-rendering: pixelated !important; border: none !important; box-shadow: none !important; }
   `;
   
   const style = document.createElement('style');
@@ -200,7 +330,7 @@ const EQTooltip = (() => {
   
     if (has(D.skill) || has(D.delay)) {
       const parts = [];
-      if (has(D.skill)) parts.push(`Skill: ${D.skill}`);
+      if (has(D.skill)) parts.push(`Skill: ${SKILLS[D.skill] || D.skill}`);
       if (has(D.delay)) parts.push(`Atk Delay: ${D.delay}`);
       push(`<div class="section">${parts.join(' ')}</div>`);
     }
@@ -264,7 +394,7 @@ const EQTooltip = (() => {
   
     // WT, Size
     if (has(D.weight) || has(D.size)) {
-      push(`<div class="section">WT: ${D.weight || 0} Size: ${D.size || 'Unknown'}</div>`);
+      push(`<div class="section">WT: ${D.weight ? (D.weight / 10).toFixed(1) : ''} Size: ${formatSize(D.size)}</div>`);
     }
   
     // Class / Race
@@ -272,67 +402,65 @@ const EQTooltip = (() => {
     if (has(D.races)) push(`<div class="section"><span class="label">Race:</span> ${decodeRaces(parseInt(D.races, 10))}</div>`);
   
     // Augmentation Slots / Slot Info
-    if (has(D.slotinfo)) push(`<div class="section">${D.slotinfo}</div>`);
+    if (has(D.slotinfo)) push(`<div class="section">${decodeRaces(parseInt(D.slotinfo, 10))}</div>`);
   
     return out.join('');
   }
 
   function renderSpell(S) {
-    const push = (arr, h) => { if (h) arr.push(h); };
-    const out = [];
-  
-    push(out, `<div class="name">Spell: ${S.name}</div>`);
-    if (has(S.spelllevel)) push(out, `<div class="section">Level: ${S.spelllevel}</div>`);
-    if (has(S.skill))      push(out, `<div class="section">Skill: ${S.skill}</div>`);
-  
-    if (has(S.mana)) {
-      let manaText = `Mana: ${S.mana}`;
-      if (has(S.mana_min) && has(S.mana_max)) {
-        manaText += ` (${S.mana_min} - ${S.mana_max})`;
-      }
-      push(out, `<div class="section">${manaText}</div>`);
+    const has = v => v !== undefined && v !== null && v !== '';
+    let iconHTML = '';
+
+    if (has(S.icon)) {
+      const iconId = parseInt(S.icon, 10);
+      const ICON  = 40;
+      const COLS  = 6;
+      const CELLS = 36;
+
+      const sheet = Math.floor((iconId - 1) / CELLS) + 1;
+      const idx   = (iconId - 1) % CELLS;
+      const col   = idx % COLS;
+      const row   = Math.floor(idx / COLS);
+
+      const x = -(col * ICON);
+      const y = -(row * ICON);
+
+      iconHTML = `
+        <div class="icon-container">
+          <div class="spell-icon"
+              style="
+                background-image: url('/static/img/icons/spells0${sheet}.png') !important;
+                background-position: ${x}px ${y}px !important;
+                background-size: auto !important;   /* never scale the sheet   */
+              ">
+          </div>
+        </div>
+      `;
     }
-  
-    if (has(S.casttime)) {
-      const sec = parseFloat(S.casttime).toFixed(1);
-      push(out, `<div class="section">Cast: ${sec} sec</div>`);
-    }
-  
-    if (has(S.recasttime)) push(out, `<div class="section">Recast: ${S.recasttime} sec</div>`);
-    if (has(S.recovery_time)) push(out, `<div class="section">Recovery: ${S.recovery_time} sec</div>`);
-    if (has(S.caster)) push(out, `<div class="section">Caster: ${S.caster}</div>`);
-  
-    if (has(S.targettype)) push(out, `<div class="section">Target: ${S.targettype}</div>`);
+
+    const parts = [];
+    parts.push(`<div class="name">${S.name}</div>`);
+    if (has(S.spell_category)) parts.push(`<div class="section"><strong>Type:</strong> ${S.spell_category}</div>`);
+    if (has(S.skill))          parts.push(`<div class="section">Skill: ${SKILLS[S.skill] || S.skill}</div>`);
+    if (has(S.mana))           parts.push(`<div class="section">Mana: ${S.mana}</div>`);
+    if (has(S.cast_time))      parts.push(`<div class="section">Cast Time: ${formatDuration(S.cast_time)}</div>`);
+    if (has(S.recast_time))    parts.push(`<div class="section">Recast Time: ${formatDuration(S.recast_time)}</div>`);
+    if (has(S.recovery_time))  parts.push(`<div class="section">Recovery Time: ${formatDuration(S.recovery_time)}</div>`);
+    if (has(S.targettype))     parts.push(`<div class="section">Target: ${S.targettype}</div>`);
     if (has(S.range)) {
-      let rangeStr = `Range: ${S.range}`;
-      if (has(S.aoerange)) rangeStr += ` (AE: ${S.aoerange})`;
-      push(out, `<div class="section">${rangeStr}</div>`);
+      let r = `Range: ${S.range}`;
+      if (has(S.aoerange)) r += ` (AE: ${S.aoerange})`;
+      parts.push(`<div class="section">${r}</div>`);
     }
-  
-    if (has(S.buffduration)) {
-      const durationSec = parseInt(S.buffduration);
-      const durationHMS = formatSecondsToHMS(durationSec);
-      push(out, `<div class="section">Duration: ${durationHMS}</div>`);
-    }
-  
-    if (has(S.description)) push(out, `<div class="section">${S.description}</div>`);
-  
-    if (has(S.you_cast)) push(out, `<div class="section">On You: ${S.you_cast}</div>`);
-    if (has(S.cast_on_other)) push(out, `<div class="section">On Other: ${S.cast_on_other}</div>`);
-    if (has(S.spell_fades)) push(out, `<div class="section">Wears Off: ${S.spell_fades}</div>`);
-  
-    return out.join('');
-  }
-  
-  function formatSecondsToHMS(totalSeconds) {
-    if (!totalSeconds || totalSeconds === 0) return 'Instant';
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-    let result = '';
-    if (hours) result += `${hours}:`;
-    result += `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-    return result;
+    if (has(S.buffduration))   parts.push(`<div class="section">Duration: ${formatDuration(S.buffduration)}</div>`);
+    if (has(S.resisttype))     parts.push(`<div class="section">Resist: ${RESIST_TYPES[S.resisttype]}</div>`);
+    if (has(S.HateAdded))      parts.push(`<div class="section">Hate: ${S.HateAdded} + ${S.bonushate || 0} bonus</div>`);
+    if (has(S.you_cast))       parts.push(`<div class="section">You Cast: ${S.you_cast}</div>`);
+    if (has(S.cast_on_you))    parts.push(`<div class="section">On You: ${S.cast_on_you}</div>`);
+    if (has(S.cast_on_other))  parts.push(`<div class="section">On Other: ${S.cast_on_other}</div>`);
+    if (has(S.spell_fades))    parts.push(`<div class="section">Wears Off: ${S.spell_fades}</div>`);
+
+    return `${iconHTML}<div class="spell-wrapper">${parts.join('')}</div>`;
   }
 
   function renderNpc(N) {

@@ -77,34 +77,40 @@ def get_npc_spawnpoints(npcId: int) -> Dict[str, Any]:
     currentExpansion = int(expansionRow['rule_value'])
 
     sql = f"""
-      SELECT
+      SELECT   
         {NPC_TYPES_TABLE_SELECT_FIELDS},
         z.short_name AS zone_shortname,
         z.long_name AS zone_longname,
-        ROUND(s2.x, 1) AS x,
         ROUND(s2.y, 1) AS y,
+        ROUND(s2.x, 1) AS x,
         ROUND(s2.z, 1) AS z,
-        s2.respawntime
+        s2.respawntime,
+        se.chance,
+        ph.placeholder_list AS placeholders 
       FROM npc_types nt
-      LEFT JOIN spawnentry se ON nt.id = se.npcID
-      LEFT JOIN spawn2 s2 ON se.spawngroupID = s2.spawngroupID
-      LEFT JOIN zone z ON s2.zone = z.short_name
+      JOIN spawnentry se ON nt.id = se.npcID
+      JOIN spawn2 s2 ON se.spawngroupID = s2.spawngroupID
+      JOIN zone z ON s2.zone = z.short_name
+      LEFT JOIN (
+        SELECT 
+          spg.spawngroupID,
+          GROUP_CONCAT(CONCAT(n2.name, ' (', spg.chance, '%%)') ORDER BY n2.name SEPARATOR ', ') AS placeholder_list
+        FROM spawnentry spg
+        JOIN npc_types n2 ON n2.id = spg.npcID
+        WHERE spg.chance > 0 AND spg.npcID <> %s
+        GROUP BY spg.spawngroupID
+      ) ph ON ph.spawngroupID = s2.spawngroupID
       WHERE nt.id = %s
-        AND (
-          (se.min_expansion = -1 OR se.min_expansion <= %s)
-          AND (se.max_expansion = -1 OR se.max_expansion >= %s)
-        )
-        AND (
-          (z.min_expansion = -1 OR z.min_expansion <= %s)
-          AND (z.max_expansion = -1 OR z.max_expansion >= %s)
-        )
-        AND (
-          z.expansion <= %s
-        )
+        AND se.chance > 0
+        AND ((se.min_expansion = -1 OR se.min_expansion <= %s)
+         AND (se.max_expansion = -1 OR se.max_expansion >= %s))
+        AND ((z.min_expansion = -1 OR z.min_expansion <= %s)
+         AND (z.max_expansion = -1 OR z.max_expansion >= %s))
+        AND z.expansion <= %s
       ORDER BY z.long_name, s2.id
     """
 
-    cur.execute(sql, (npcId, currentExpansion, currentExpansion, currentExpansion, currentExpansion, currentExpansion))
+    cur.execute(sql, (npcId, npcId, currentExpansion, currentExpansion, currentExpansion, currentExpansion, currentExpansion))
     rows = cur.fetchall()
 
   if not rows:
@@ -122,17 +128,13 @@ def get_npc_spawnpoints(npcId: int) -> Dict[str, Any]:
         'spawnpoints': []
       }
     zoneGrouped[zoneKey]['spawnpoints'].append({
-      'x': row['x'],
       'y': row['y'],
+      'x': row['x'],
       'z': row['z'],
-      'respawntime': row['respawntime']
+      'respawntime': row['respawntime'],
+      'chance': row['chance'],
+      'placeholders': row.get('placeholders')
     })
 
   npcInfo['zones'] = zoneGrouped
   return npcInfo
-
-__all__ = [
-  "get_npc",
-  "search_npcs",
-  "get_npc_spawnpoints"
-]

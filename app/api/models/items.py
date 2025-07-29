@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Tuple
 import pymysql.cursors
 from api.db import getDb
 from api.models.npcs import get_npc_spawnpoints
+from api.models.characters import CLASS_BITMASK, RACE_BITMASK
 
 NUMERIC_ATTR_MAP: Dict[str, str] = {
   "str": "i.astr",
@@ -46,62 +47,34 @@ BOOL_FLAG_MAP: Dict[str, str] = {
 }
 
 SLOT_BITMASKS: Dict[int, Tuple[int, str]] = {
-  7:  (1 << 2,  "Head"),
-  8:  (1 << 17, "Chest"),
-  9:  (1 << 7,  "Arms"),
-  10: (1 << 9,  "Wrist"),
-  11: (1 << 12, "Hands"),
-  12: (1 << 18, "Legs"),
-  13: (1 << 19, "Feet"),
-  14: (1 << 8,  "Back"),
-  30: (1 << 21, "Primary"),
-  31: (1 << 22, "Secondary"),
-  3:  (1 << 1,  "Ear"),
-  4:  (1 << 15, "Finger"),
+  0:  (1 << 0,  "Charm"),
+  1:  (1 << 1,  "Ear"),
+  2:  (1 << 2,  "Head"),
+  3:  (1 << 3,  "Face"),
+  # Ear 2
   5:  (1 << 5,  "Neck"),
-  2:  (1 << 11, "Range"),
+  6:  (1 << 6, "Shoulders"),
+  7:  (1 << 7,  "Arms"),
+  8:  (1 << 8,  "Back"),
+  9:  (1 << 9,  "Wrist"),
+  # Wrist 2
+  11:  (1 << 11, "Range"),
+  12:  (1 << 12, "Hands"),
+  13:  (1 << 13, "Primary"),
+  14:  (1 << 14, "Secondary"),
+  15:  (1 << 15, "Finger"),
+  # Finger 2
+  17:  (1 << 17, "Chest"),
+  18:  (1 << 18, "Legs"),
+  19:  (1 << 19, "Feet"),
+  20:  (1 << 20, "Waist"),
+  21:  (1 << 21, "PowerSource"),
+  22:  (1 << 22, "Ammo"),
 }
 
 SLOT_OPTIONS = [(str(idx), name) for idx, (_, name) in SLOT_BITMASKS.items()]
 SORTABLE_FIELDS = {"name": "i.Name", **NUMERIC_ATTR_MAP}
 CMP_OPS = {">=", "<=", "="}
-
-CLASS_BITMASK = {
-  "Warrior":       1 << 0,
-  "Cleric":        1 << 1,
-  "Paladin":       1 << 2,
-  "Ranger":        1 << 3,
-  "Shadow Knight": 1 << 4,
-  "Druid":         1 << 5,
-  "Monk":          1 << 6,
-  "Bard":          1 << 7,
-  "Rogue":         1 << 8,
-  "Shaman":        1 << 9,
-  "Necromancer":   1 << 10,
-  "Wizard":        1 << 11,
-  "Magician":      1 << 12,
-  "Enchanter":     1 << 13,
-  "Beastlord":     1 << 14,
-  "Berserker":     1 << 15
-}
-
-RACE_BITMASK = {
-  "Human":     1 << 0,
-  "Barbarian": 1 << 1,
-  "Erudite":   1 << 2,
-  "Wood Elf":  1 << 3,
-  "High Elf":  1 << 4,
-  "Dark Elf":  1 << 5,
-  "Half Elf":  1 << 6,
-  "Dwarf":     1 << 7,
-  "Troll":     1 << 8,
-  "Ogre":      1 << 9,
-  "Halfling":  1 << 10,
-  "Gnome":     1 << 11,
-  "Iksar":     1 << 12,
-  "Vah Shir":  1 << 13,
-  "Froglok":   1 << 14
-}
 
 ITEM_TABLE_SELECT_FIELDS = """
       i.id,
@@ -417,18 +390,53 @@ def get_item_drops(itemId: int) -> List[Dict[str, Any]]:
     cur.execute(sql, (itemId,))
     npcDrops = cur.fetchall()
 
-  validNpcDrops = []
+  aggregated = {}
 
   for npc in npcDrops:
     npcSpawnData = get_npc_spawnpoints(npc['npc_id'])
     if not npcSpawnData or not npcSpawnData.get('zones'):
       continue
 
-    npc['npc'] = {k: v for k, v in npcSpawnData.items() if k != 'zones'}
-    npc['zones'] = npcSpawnData['zones']
-    validNpcDrops.append(npc)
+    npcInfo = {k: v for k, v in npcSpawnData.items() if k != 'zones'}
+    zones = npcSpawnData['zones']
 
-  return validNpcDrops
+    for zoneShort, zoneData in zones.items():
+      key = (npcInfo['name'], npc['effective_chance'], zoneShort)
+
+      if key not in aggregated:
+        aggregated[key] = {
+          'npc': {
+            'name': npcInfo['name'],
+            'lastname': npcInfo.get('lastname'),
+            'race': npcInfo.get('race'),
+            'class': npcInfo.get('class'),
+            'bodytype': npcInfo.get('bodytype'),
+            'runspeed': npcInfo.get('runspeed'),
+            'level': npcInfo.get('level'),
+            'maxlevel': npcInfo.get('level')  # Initial max same as current level
+          },
+          'effective_chance': npc['effective_chance'],
+          'zones': {
+            zoneShort: {
+              'zone_longname': zoneData['zone_longname'],
+              'spawnpoints': list(zoneData['spawnpoints'])
+            }
+          }
+        }
+      else:
+        existing = aggregated[key]
+        existing['npc']['level'] = min(existing['npc']['level'], npcInfo['level'])
+        existing['npc']['maxlevel'] = max(existing['npc']['maxlevel'], npcInfo['level'])
+
+        if zoneShort not in existing['zones']:
+          existing['zones'][zoneShort] = {
+            'zone_longname': zoneData['zone_longname'],
+            'spawnpoints': list(zoneData['spawnpoints'])
+          }
+        else:
+          existing['zones'][zoneShort]['spawnpoints'].extend(zoneData['spawnpoints'])
+
+  return list(aggregated.values())
 
 def get_item_merchants(itemId: int) -> List[int]:
   db = getDb()
@@ -459,20 +467,3 @@ def get_item_recipes(itemId: int) -> List[int]:
     return []
 
   return [int(rid) for rid in row[0].split(',')]
-
-__all__ = [
-  "get_item",
-  "search_items_filtered",
-  "get_item_drops",
-  "get_item_merchants",
-  "get_item_recipes",
-  "decodeBitmask",
-  "NUMERIC_ATTR_MAP",
-  "BOOL_FLAG_MAP",
-  "SLOT_OPTIONS",
-  "SLOT_BITMASKS",
-  "SORTABLE_FIELDS",
-  "CLASS_BITMASK",
-  "RACE_BITMASK",
-  "ITEM_SOURCE_OPTIONS"
-]

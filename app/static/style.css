@@ -540,3 +540,14 @@ tr:nth-child(even) td {
 .drop-source:last-child {
   margin-bottom: 0;
 }
+
+.known-spell {
+  color: #9fdf9f; /* light green */
+  font-weight: bold;
+}
+
+.unknown-spell {
+  color: #ccc;
+  font-style: italic;
+  opacity: 0.7;
+}

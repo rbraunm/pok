@@ -6,7 +6,7 @@ from web.utils import PoKJSONEncoder, renderPage
 from web.loaders import loadBlueprints, loadModels
 from api.config import POK_DEBUG
 
-APP_VERSION = "0.6.87"
+APP_VERSION = "0.6.178"
 
 app = Flask(
   __name__,

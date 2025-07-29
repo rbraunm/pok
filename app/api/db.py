@@ -21,7 +21,6 @@ def initializeDbObjects():
   db = getDb()
   with db.cursor() as cur:
     print("Tuning session variables for query performance...")
-
     cur.execute("SET SESSION max_heap_table_size=1073741824")
     cur.execute("SET SESSION tmp_table_size=1073741824")
     cur.execute("SET SESSION sort_buffer_size=67108864")
@@ -31,7 +30,6 @@ def initializeDbObjects():
     cur.execute("SET SESSION group_concat_max_len=131072")
 
     print("Creating pok_item_sources table if it does not exist...")
-
     cur.execute("""
       CREATE TABLE IF NOT EXISTS pok_item_sources (
         item_id INT PRIMARY KEY,
@@ -42,10 +40,83 @@ def initializeDbObjects():
       )
     """)
 
+    print("Ensuring indexes exist for query performance...")
+    INDEX_DEFINITIONS = [
+      # loottable_entries
+      ("loottable_entries", "pok_idx_lootdrop_id", ["lootdrop_id"]),
+      ("loottable_entries", "pok_idx_loottable_id", ["loottable_id"]),
+      ("loottable_entries", "pok_idx_lootdrop_loottable", ["lootdrop_id", "loottable_id"]),
+
+      # merchantlist
+      ("merchantlist", "pok_idx_item_minexp_maxexp", ["item", "min_expansion", "max_expansion"]),
+
+      # npc_types
+      ("npc_types", "pok_idx_loottable_id", ["loottable_id"]),
+
+      # spawnentry
+      ("spawnentry", "pok_idx_npcID", ["npcID"]),
+      ("spawnentry", "pok_idx_spawngroupID", ["spawngroupID"]),
+      ("spawnentry", "pok_idx_npc_spawngroup", ["npcID", "spawngroupID"]),
+
+      # spawn2
+      ("spawn2", "pok_idx_spawngroup_zone", ["spawngroupID", "zone"]),
+
+      # tradeskill_recipe
+      ("tradeskill_recipe", "pok_idx_expansion_range", ["min_expansion", "max_expansion"]),
+
+      # tradeskill_recipe_entries
+      ("tradeskill_recipe_entries", "pok_idx_item_success_comp", ["item_id", "successcount", "componentcount"]),
+
+      # items
+      ("items", "pok_idx_slots_classes_races_levels", ["slots", "classes", "races", "reqlevel", "reclevel"]),
+      ("items", "pok_idx_reqlevel", ["reqlevel"]),
+      ("items", "pok_idx_slots", ["slots"]),
+      ("items", "pok_idx_classes", ["classes"]),
+      ("items", "pok_idx_races", ["races"]),
+      ("items", "pok_idx_itemtype", ["itemtype"]),
+      ("items", "pok_idx_scrolleffect", ["scrolleffect"]),
+
+      # lootdrop_entries
+      ("lootdrop_entries", "pok_idx_item_id_only", ["item_id"]),
+      ("lootdrop_entries", "pok_idx_item_exp", ["item_id", "min_expansion", "max_expansion"]),
+    ]
+
+    def getExistingIndexes(cur, table):
+      cur.execute(f"SHOW INDEX FROM {table}")
+      indexInfo = {}
+      for row in cur.fetchall():
+        idxName = row['Key_name']
+        colName = row['Column_name']
+        seqInIndex = row['Seq_in_index']
+        if idxName not in indexInfo:
+          indexInfo[idxName] = []
+        indexInfo[idxName].append((seqInIndex, colName))
+      return {k: [col for _, col in sorted(v)] for k, v in indexInfo.items()}
+
+    for table, indexName, columns in INDEX_DEFINITIONS:
+      existingIndexes = getExistingIndexes(cur, table)
+      matchingIndex = None
+      for existingName, existingCols in existingIndexes.items():
+        if existingCols == columns:
+          matchingIndex = existingName
+          break
+
+      if indexName in existingIndexes:
+        if existingIndexes[indexName] != columns:
+          print(f"Dropping mismatched index '{indexName}' on '{table}' (was on {existingIndexes[indexName]}, expected {columns})")
+          cur.execute(f"DROP INDEX {indexName} ON {table}")
+          cur.execute(f"CREATE INDEX {indexName} ON {table} ({', '.join(columns)})")
+          print(f"Recreated index '{indexName}' on '{table}' with columns {columns}")
+        else:
+          print(f"Index '{indexName}' on '{table}' is correct, skipping")
+      elif matchingIndex:
+        print(f"Table '{table}' already has index '{matchingIndex}' on columns {columns}, skipping creation of '{indexName}'")
+      else:
+        cur.execute(f"CREATE INDEX {indexName} ON {table} ({', '.join(columns)})")
+        print(f"Created index '{indexName}' on '{table}' with columns {columns}")
+
     print("Creating or replacing pok_populate_item_sources stored procedure...")
-
     cur.execute("DROP PROCEDURE IF EXISTS pok_populate_item_sources")
-
     cur.execute("""
     CREATE PROCEDURE pok_populate_item_sources()
     BEGIN
@@ -74,6 +145,7 @@ def initializeDbObjects():
       JOIN zone z ON s2.zone = z.short_name
       WHERE
         (se.min_expansion = -1 OR se.min_expansion <= currentExpansion)
+        AND (se.chance > 0)
         AND (se.max_expansion = -1 OR se.max_expansion >= currentExpansion)
         AND (z.min_expansion = -1 OR z.min_expansion <= currentExpansion)
         AND (z.max_expansion = -1 OR z.max_expansion >= currentExpansion)
@@ -110,6 +182,7 @@ def initializeDbObjects():
       FROM tradeskill_recipe_entries tre
       JOIN tradeskill_recipe tr ON tre.recipe_id = tr.id
       WHERE tre.successcount > 0
+        AND tr.enabled = 1
         AND (tr.min_expansion = -1 OR tr.min_expansion <= currentExpansion)
         AND (tr.max_expansion = -1 OR tr.max_expansion >= currentExpansion)
       GROUP BY tre.item_id
@@ -127,18 +200,3 @@ def initializeDbObjects():
     print("DB initialization completed.")
 
   db.close()
-#      LEFT JOIN spawnentry se ON nt.id = se.npcID
-#      LEFT JOIN spawn2 s2 ON se.spawngroupID = s2.spawngroupID
-#      LEFT JOIN zone z ON s2.zone = z.short_name
-#      WHERE nt.id = %s
-#        AND (
-#          (se.min_expansion = -1 OR se.min_expansion <= %s)
-#          AND (se.max_expansion = -1 OR se.max_expansion >= %s)
-#        )
-#        AND (
-#          (z.min_expansion = -1 OR z.min_expansion <= %s)
-#          AND (z.max_expansion = -1 OR z.max_expansion >= %s)
-#        )
-#        AND (
-#          z.expansion <= %s
-#        )

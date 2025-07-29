@@ -4,14 +4,13 @@ from pathlib import Path
 import html
 from flask import request
 from web.utils import renderPage
+from api.models.characters import CLASS_BITMASK, RACE_BITMASK
 from api.models.items import (
   search_items_filtered,
   NUMERIC_ATTR_MAP,
   BOOL_FLAG_MAP,
   SLOT_OPTIONS,
   SORTABLE_FIELDS,
-  CLASS_BITMASK,
-  RACE_BITMASK,
   ITEM_SOURCE_OPTIONS
 )
 
@@ -202,92 +201,96 @@ def register(app):
       )
     htmlContent += "</ul>"
     htmlContent += r"""
-    <script>
-      function formatRespawnTime(seconds) {
-        const days = Math.floor(seconds / 86400);
-        seconds %= 86400;
-        const hours = Math.floor(seconds / 3600);
-        seconds %= 3600;
-        const minutes = Math.floor(seconds / 60);
-        seconds = seconds % 60;
+      <script>
+        function formatRespawnTime(seconds) {
+          const days = Math.floor(seconds / 86400);
+          seconds %= 86400;
+          const hours = Math.floor(seconds / 3600);
+          seconds %= 3600;
+          const minutes = Math.floor(seconds / 60);
+          seconds = seconds % 60;
 
-        const parts = [];
-        if (days > 0) parts.push(`${days}d`);
-        if (hours > 0) parts.push(`${hours}h`);
-        if (minutes > 0) parts.push(`${minutes}m`);
-        if (seconds > 0) parts.push(`${seconds}s`);
+          const parts = [];
+          if (days > 0) parts.push(`${days}d`);
+          if (hours > 0) parts.push(`${hours}h`);
+          if (minutes > 0) parts.push(`${minutes}m`);
+          if (seconds > 0) parts.push(`${seconds}s`);
 
-        return parts.join(' ') || '0s';
-      }
+          return parts.join(' ') || '0s';
+        }
 
-      function bindResultItemClicks() {
-        document.querySelectorAll('.result-item').forEach(itemElement => {
-          itemElement.addEventListener('click', async () => {
-            const detailsBox = itemElement.querySelector('.result-details');
-            if (!detailsBox.style.display || detailsBox.style.display === 'none') {
-              const itemId = itemElement.getAttribute('data-itemid');
-              const res = await fetch(`/api/item/${itemId}/drops`);
-              const drops = await res.json();
+        function bindResultItemClicks() {
+          document.querySelectorAll('.result-item').forEach(itemElement => {
+            itemElement.addEventListener('click', async () => {
+              const detailsBox = itemElement.querySelector('.result-details');
+              if (!detailsBox.style.display || detailsBox.style.display === 'none') {
+                const itemId = itemElement.getAttribute('data-itemid');
+                const res = await fetch(`/api/item/${itemId}/drops`);
+                const drops = await res.json();
 
-              if (!drops.length) {
-                detailsBox.innerHTML = '<em>No drop sources available.</em>';
-              } else {
-                detailsBox.innerHTML = drops.map(drop => {
-                  const npc = drop.npc || {};
-                  const zones = drop.zones || {};
-                  let zoneDetails = '';
+                if (!drops.length) {
+                  detailsBox.innerHTML = '<em>No drop sources available.</em>';
+                } else {
+                  detailsBox.innerHTML = drops.map(drop => {
+                    const npc = drop.npc || {};
+                    const zones = drop.zones || {};
+                    let zoneDetails = '';
 
-                  for (const [zoneShort, zoneData] of Object.entries(zones)) {
-                    const spawnPoints = zoneData.spawnpoints || [];
-                    const spawnPointsText = spawnPoints.length
-                      ? spawnPoints.map(sp => 
-                          `(${sp.x}, ${sp.y}, ${sp.z}) ${formatRespawnTime(sp.respawntime)}`
-                        ).join('<br>')
-                      : '<em>No spawn points recorded</em>';
+                    for (const [zoneShort, zoneData] of Object.entries(zones)) {
+                      const spawnPoints = zoneData.spawnpoints || [];
+                      const spawnPointsText = spawnPoints.length
+                        ? spawnPoints.map(sp => {
+                            const hasPlaceholders = sp.placeholders && sp.placeholders.length > 0;
+                            const chanceText = hasPlaceholders && sp.chance != null ? ` (${sp.chance}%)` : '';
+                            const tooltip = hasPlaceholders ? ` title="Placeholders: ${sp.placeholders.replace(/"/g, '&quot;')}"` : '';
+                            return `<span${tooltip}>(${sp.y}, ${sp.x}, ${sp.z}) ${formatRespawnTime(sp.respawntime)}${chanceText}</span>`;
+                          }).join('<br>')
+                        : '<em>No spawn points recorded</em>';
 
-                    zoneDetails += `
-                      <div class="zone-section">
-                        <strong>${zoneData.zone_longname} (${zoneShort})</strong><br>
-                        Spawn Points:<br>
-                        ${spawnPointsText}
-                      </div><br>`;
-                  }
+                      zoneDetails += `
+                        <div class="zone-section">
+                          <strong>${zoneData.zone_longname} (${zoneShort})</strong><br>
+                          Spawn Points:<br>
+                          ${spawnPointsText}
+                        </div><br>`;
+                    }
 
-                  const levelRange = npc.level
-                    ? (npc.maxlevel && npc.maxlevel !== npc.level
+                    let levelText = '??';
+                    if (npc.level != null) {
+                      levelText = (npc.maxlevel != null && npc.maxlevel !== npc.level)
                         ? `${npc.level} - ${npc.maxlevel}`
-                        : `${npc.level}`)
-                    : '??';
+                        : `${npc.level}`;
+                    }
 
-                  return `
-                    <div class="drop-source">
-                      <strong>NPC:</strong> ${npc.name || 'Unknown'} ${npc.lastname || ''}<br>
-                      Level: ${levelRange}<br>
-                      Effective Chance: ${drop.effective_chance}%<br>
-                      ${zoneDetails}
-                    </div>`;
-                }).join('<hr>');
+                    return `
+                      <div class="drop-source">
+                        <strong>NPC:</strong> ${npc.name || 'Unknown'} ${npc.lastname || ''}<br>
+                        Level: ${levelText}<br>
+                        Effective Chance: ${drop.effective_chance}%<br>
+                        ${zoneDetails}
+                      </div>`;
+                  }).join('<hr>');
 
-                detailsBox.innerHTML += `
-                  <hr>
-                  <details>
-                    <summary>Raw JSON Data</summary>
-                    <pre>${JSON.stringify(drops, null, 2)}</pre>
-                  </details>
-                `;
+                  detailsBox.innerHTML += `
+                    <hr>
+                    <details>
+                      <summary>Raw JSON Data</summary>
+                      <pre>${JSON.stringify(drops, null, 2)}</pre>
+                    </details>
+                  `;
+                }
+                detailsBox.style.display = 'block';
+              } else {
+                detailsBox.style.display = 'none';
               }
-              detailsBox.style.display = 'block';
-            } else {
-              detailsBox.style.display = 'none';
-            }
+            });
           });
-        });
-      }
+        }
 
-      document.addEventListener('DOMContentLoaded', () => {
-        bindResultItemClicks();
-      });
-    </script>
+        document.addEventListener('DOMContentLoaded', () => {
+          bindResultItemClicks();
+        });
+      </script>
     """
 
     totalResults = result['total']

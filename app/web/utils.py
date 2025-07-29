@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Dict
 from flask import render_template
 from decimal import Decimal
 import datetime
 from urllib.parse import urlencode
 
 NAV_LINKS: list[tuple[str, str]] = []
+
+def getNameFromBitmask(value: int, mapping: Dict[str, int]) -> str:
+  for name, bit in mapping.items():
+    if bit == (1 << (value - 1)):
+      return name
+  return f"Unknown ({value})"
 
 def registerNavLink(name: str, url: str) -> None:
     NAV_LINKS.append((name, url))
