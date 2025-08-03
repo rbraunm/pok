@@ -229,6 +229,17 @@ function formatDuration(totalSeconds) {
 
   const css = `
   .eqtooltip-container {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    transition: opacity 0.15s ease !important;
+  }
+
+  .eqtooltip-container.visible {
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .eqtooltip-container {
     all: initial; /* reset all inherited styles */
 
     /* Background: parchment texture with midnight blue tint */
@@ -279,17 +290,81 @@ function formatDuration(totalSeconds) {
     opacity: 0;
   }
 
-  span.eqtooltip { cursor: pointer !important; }
+  span.eqtooltip { 
+    cursor: pointer !important; 
+  }
   
-  .eqtooltip-container .name            { font-size: 18px !important; font-weight: 700 !important; margin-bottom: 2px !important; }
-  .eqtooltip-container .flags           { color: #E0DFDB !important; }
-  .eqtooltip-container .section         { display: block !important; margin: 2px 0 !important; line-height: 1.4 !important; }
-  .eqtooltip-container .label           { font-weight: 700 !important; }
-  .eqtooltip-container .stat-heroic     { color: #6cf !important; }
-  .eqtooltip-container .effect          { color: #FFDF00 !important; }
-  .eqtooltip-container .spell-wrapper   { margin-left: 44px !important; position: relative !important; }
-  .eqtooltip-container .icon-container  { position: absolute !important; overflow: hidden !important; top: 0px !important; left: -42px !important; width: 40px !important; height: 40px !important; padding: 0 !important; background-origin: border-box !important; background-clip: padding-box, border-box !important; border: 2px solid transparent !important; border-radius: 4px !important; border-image: linear-gradient(135deg, #f9e49a, #d7b95d, #b68d27, #d7b95d, #f9e49a) 1 stretch !important; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 4px rgba(0, 0, 0, 0.6) !important; background-color: rgba(4, 16, 40, 0.85) !important; }
-  .eqtooltip-container .spell-icon      { width: 40px !important; height: 40px !important; background-repeat: no-repeat !important; background-size: 240px 240px !important; image-rendering: pixelated !important; border: none !important; box-shadow: none !important; }
+  .eqtooltip-container .name {
+    font-size: 18px !important;
+    font-weight: 700 !important;
+    margin-bottom: 2px !important;
+  }
+
+  .eqtooltip-container .flags {
+    color: #E0DFDB !important;
+  }
+
+  .eqtooltip-container .section {
+    display: block !important;
+    margin: 2px 0 !important;
+    line-height: 1.4 !important;
+  }
+
+  .eqtooltip-container .label {
+    font-weight: 700 !important;
+  }
+
+  .eqtooltip-container .stat-heroic {
+    color: #6cf !important;
+  }
+
+  .eqtooltip-container .effect {
+    color: #FFDF00 !important;
+  }
+
+  .eqtooltip-container .spell-wrapper {
+    position: relative !important;
+  }
+
+  .eqtooltip-container .icon-container {
+    position: absolute !important;
+    top: -2px !important;
+    left: -52px !important;
+    width: 40px !important;
+    height: 40px !important;
+    overflow: hidden !important;
+
+    background-color: rgba(4, 16, 40, 0.85) !important;
+    border: 2px solid transparent !important;
+    border-radius: 4px !important;
+    background-origin: border-box !important;
+    background-clip: padding-box, border-box !important;
+
+    /* Subtle bevel */
+    border-image: linear-gradient(
+      135deg,
+      #e9d8a6,
+      #c8aa6e,
+      #a98b4d,
+      #c8aa6e,
+      #e9d8a6
+    ) 1 stretch !important;
+
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 0, 0, 0.75),
+      0 0 3px rgba(0, 0, 0, 0.5) !important;
+  }
+
+  .eqtooltip-container .spell-icon {
+    width: 40px !important;
+    height: 40px !important;
+    background-repeat: no-repeat !important;
+    background-size: 240px 240px !important;
+    background-position: center center !important;
+    image-rendering: pixelated !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
   `;
   
   const style = document.createElement('style');
@@ -553,7 +628,7 @@ const EQTooltip = (() => {
     const cacheKey = `${type}_${id}`;
     const show = (data) => {
       tooltipEl.innerHTML = renderTooltip(data, type);
-      tooltipEl.style.opacity = 1;
+      tooltipEl.classList.add('visible');
       positionTooltip(event);
     };
 
@@ -589,7 +664,7 @@ const EQTooltip = (() => {
   }
 
   function hideTooltip() {
-    if (tooltipEl) tooltipEl.style.opacity = 0;
+    tooltipEl.classList.remove('visible');
   }
 
   function init() {

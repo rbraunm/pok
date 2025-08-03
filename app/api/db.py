@@ -49,23 +49,32 @@ def initializeDbObjects():
 
       # merchantlist
       ("merchantlist", "pok_idx_item_minexp_maxexp", ["item", "min_expansion", "max_expansion"]),
+      ("merchantlist", "pok_idx_merchantid", ["merchantid"]),
+      ("merchantlist", "pok_idx_merchantid_minmaxexp", ["merchantid", "min_expansion", "max_expansion"]),
 
       # npc_types
       ("npc_types", "pok_idx_loottable_id", ["loottable_id"]),
+      ("npc_types", "pok_idx_merchant_id", ["merchant_id"]),
 
       # spawnentry
       ("spawnentry", "pok_idx_npcID", ["npcID"]),
       ("spawnentry", "pok_idx_spawngroupID", ["spawngroupID"]),
       ("spawnentry", "pok_idx_npc_spawngroup", ["npcID", "spawngroupID"]),
+      ("spawnentry", "pok_idx_npcid_chance", ["npcID", "chance"]),
+      ("spawnentry", "pok_idx_minmaxexp", ["min_expansion", "max_expansion"]),
 
       # spawn2
       ("spawn2", "pok_idx_spawngroup_zone", ["spawngroupID", "zone"]),
+      ("spawn2", "pok_idx_spawn2_minmaxexp", ["min_expansion", "max_expansion"]),
+      ("spawn2", "pok_idx_zone_minmaxexp", ["zone", "min_expansion", "max_expansion"]),
 
       # tradeskill_recipe
       ("tradeskill_recipe", "pok_idx_expansion_range", ["min_expansion", "max_expansion"]),
+      ("tradeskill_recipe", "pok_idx_tradeskill_skill_trivial_enabled", ["tradeskill", "skillneeded", "trivial", "enabled", "min_expansion", "max_expansion"]),
 
       # tradeskill_recipe_entries
       ("tradeskill_recipe_entries", "pok_idx_item_success_comp", ["item_id", "successcount", "componentcount"]),
+      ("tradeskill_recipe_entries", "pok_idx_recipe_item", ["recipe_id", "item_id"]),
 
       # items
       ("items", "pok_idx_slots_classes_races_levels", ["slots", "classes", "races", "reqlevel", "reclevel"]),
@@ -79,6 +88,29 @@ def initializeDbObjects():
       # lootdrop_entries
       ("lootdrop_entries", "pok_idx_item_id_only", ["item_id"]),
       ("lootdrop_entries", "pok_idx_item_exp", ["item_id", "min_expansion", "max_expansion"]),
+      ("lootdrop_entries", "pok_idx_itemid_lootdropid", ["item_id", "lootdrop_id"]),
+      ("lootdrop_entries", "pok_idx_itemid_chance", ["item_id", "chance"]),
+      ("lootdrop_entries", "pok_idx_lootdropid_minmaxexp", ["lootdrop_id", "min_expansion", "max_expansion"]),
+
+      # character_spells
+      ("character_spells", "pok_idx_spell_id_char_id", ["spell_id", "id"]),
+
+      # character_data
+      ("character_data", "pok_idx_id_deleted", ["id", "deleted_at"]),
+      ("character_data", "pok_idx_name_deleted", ["name", "deleted_at"]),
+      ("character_data", "pok_idx_deleted_name", ["deleted_at", "name"]),
+
+      # rule_values
+      ("rule_values", "pok_idx_rulename", ["rule_name"]),
+
+      # spells_new
+      ("spells_new", "pok_idx_name_only", ["name"]),
+      ("spells_new", "pok_idx_id_name", ["id", "name"]),
+      ("spells_new", "pok_idx_class_levels", [f"classes{n}" for n in range(1, 17)]),
+
+      # zone
+      ("zone", "pok_idx_short_name_expansion", ["short_name", "expansion"]),
+      ("zone", "pok_idx_short_minmaxexp", ["short_name", "min_expansion", "max_expansion"])
     ]
 
     def getExistingIndexes(cur, table):
@@ -143,11 +175,12 @@ def initializeDbObjects():
       JOIN spawnentry se ON nt.id = se.npcID
       JOIN spawn2 s2 ON se.spawngroupID = s2.spawngroupID
       JOIN zone z ON s2.zone = z.short_name
-      WHERE
-        (se.min_expansion = -1 OR se.min_expansion <= currentExpansion)
-        AND (se.chance > 0)
+      WHERE (se.chance > 0)
+        AND (se.min_expansion <= currentExpansion)
         AND (se.max_expansion = -1 OR se.max_expansion >= currentExpansion)
-        AND (z.min_expansion = -1 OR z.min_expansion <= currentExpansion)
+        AND (s2.min_expansion <= currentExpansion)
+        AND (s2.max_expansion = -1 OR s2.max_expansion >= currentExpansion)
+        AND (z.min_expansion <= currentExpansion)
         AND (z.max_expansion = -1 OR z.max_expansion >= currentExpansion)
         AND z.expansion <= currentExpansion
       GROUP BY i.id
@@ -163,12 +196,14 @@ def initializeDbObjects():
       JOIN spawnentry se ON nt.id = se.npcID
       JOIN spawn2 s2 ON se.spawngroupID = s2.spawngroupID
       JOIN zone z ON s2.zone = z.short_name
-      WHERE
-        (ml.min_expansion = -1 OR ml.min_expansion <= currentExpansion)
+      WHERE (ml.min_expansion <= currentExpansion)
         AND (ml.max_expansion = -1 OR ml.max_expansion >= currentExpansion)
-        AND (se.min_expansion = -1 OR se.min_expansion <= currentExpansion)
+        AND (se.chance > 0)
+        AND (se.min_expansion <= currentExpansion)
         AND (se.max_expansion = -1 OR se.max_expansion >= currentExpansion)
-        AND (z.min_expansion = -1 OR z.min_expansion <= currentExpansion)
+        AND (s2.min_expansion <= currentExpansion)
+        AND (s2.max_expansion = -1 OR s2.max_expansion >= currentExpansion)
+        AND (z.min_expansion <= currentExpansion)
         AND (z.max_expansion = -1 OR z.max_expansion >= currentExpansion)
         AND z.expansion <= currentExpansion
       GROUP BY ml.item

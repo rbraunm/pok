@@ -16,26 +16,32 @@ def group_spells_by_level(spells):
     grouped.setdefault(level, []).append(spell)
   for level in grouped:
     grouped[level].sort(key=lambda s: s["name"])
-  return dict(sorted(grouped.items()))
+  return dict(sorted(grouped.items(), reverse=True))
 
 def render_character_summary(character):
-  className = getNameFromBitmask(character['class_id'], CLASS_BITMASK)
+  className = getNameFromBitmask(character['class_id'], CLASS_BITMASK).lower()
   raceName = getNameFromBitmask(character['race_id'], RACE_BITMASK)
   deityName = get_deity_name(character['deity_id'])
 
-  return (
-    f"<h2>{html.escape(character['name'])}</h2>"
-    f"<p>Class: {className}<br>"
-    f"Level: {character['level']}<br>"
-    f"Race: {raceName}<br>"
-    f"Deity: {deityName}</p>"
-  )
+  return f"""
+    <div class="character-summary">
+      <img src="/static/img/class_portraits/{className}.gif" alt="{className} portrait" class="class-portrait" />
+      <div class="character-details">
+        <h2>{html.escape(character['name'])}</h2>
+        <p>Class: {className.title()}<br>
+        Level: {character['level']}<br>
+        Race: {raceName}<br>
+        Deity: {deityName}</p>
+      </div>
+    </div>
+  """
 
 def render_spell_list(grouped_spells):
   parts = []
   for level, spells in grouped_spells.items():
-    parts.append(f"<h3>Level {level}</h3>")
-    parts.append("<ul>")
+    parts.append(f"<div class='spell-level-block'>")
+    parts.append(f"<h4 class='spell-level-title'>Level {level}</h4>")
+    parts.append("<ul class='spell-list'>")
     for spell in spells:
       className = "known-spell" if spell.get("known") else "unknown-spell"
       parts.append(
@@ -43,7 +49,7 @@ def render_spell_list(grouped_spells):
         f"<span class='eqtooltip' data-type='spell' data-id='{spell['id']}'>"
         f"{html.escape(spell['name'])}</span></li>"
       )
-    parts.append("</ul>")
+    parts.append("</ul></div>")
   return "\n".join(parts)
 
 def render_search_results(results):
@@ -107,8 +113,16 @@ def register(app):
         else:
           spells = all_spells
         grouped = group_spells_by_level(spells)
-        htmlContent += render_character_summary(character)
-        htmlContent += render_spell_list(grouped)
+        leftPanel = render_character_summary(character)
+        rightPanel = render_spell_list(grouped)
+
+        htmlContent += f"""
+          <div style="display: flex; gap: 40px; align-items: flex-start;">
+            <div style="min-width: 220px;">{leftPanel}</div>
+            <div style="flex-grow: 1;">{rightPanel}</div>
+          </div>
+        """
+
       else:
         htmlContent += "<p>Character not found.</p>"
 

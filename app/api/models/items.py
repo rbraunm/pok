@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 import pymysql.cursors
 from api.db import getDb
-from api.models.npcs import get_npc_spawnpoints
-from api.models.characters import CLASS_BITMASK, RACE_BITMASK
 
 NUMERIC_ATTR_MAP: Dict[str, str] = {
   "str": "i.astr",
@@ -45,6 +43,8 @@ BOOL_FLAG_MAP: Dict[str, str] = {
   "lore": "i.loregroup",
   "noTrade": "i.nodrop",
 }
+
+SIZES = ('Tiny', 'Small', 'Medium', 'Large', 'Giant', 'Massive', 'Colossal')
 
 SLOT_BITMASKS: Dict[int, Tuple[int, str]] = {
   0:  (1 << 0,  "Charm"),
@@ -367,103 +367,3 @@ def get_item(itemId: int) -> Dict[str, Any]:
     if not item:
       raise ItemNotFoundError(f"Item with ID {itemId} not found.")
   return item
-
-def get_item_drops(itemId: int) -> List[Dict[str, Any]]:
-  sql = """
-    SELECT
-      nt.id AS npc_id,
-      lde.item_id,
-      lde.chance AS base_chance,
-      ROUND(le.multiplier, 2) AS multiplier,
-      ROUND(lde.chance * le.multiplier, 2) AS effective_chance
-    FROM lootdrop_entries lde
-    JOIN loottable_entries le ON lde.lootdrop_id = le.lootdrop_id
-    JOIN loottable lt ON le.loottable_id = lt.id
-    JOIN npc_types nt ON lt.id = nt.loottable_id
-    WHERE lde.item_id = %s
-    GROUP BY nt.id
-    ORDER BY effective_chance DESC
-  """
-
-  db = getDb()
-  with db.cursor(pymysql.cursors.DictCursor) as cur:
-    cur.execute(sql, (itemId,))
-    npcDrops = cur.fetchall()
-
-  aggregated = {}
-
-  for npc in npcDrops:
-    npcSpawnData = get_npc_spawnpoints(npc['npc_id'])
-    if not npcSpawnData or not npcSpawnData.get('zones'):
-      continue
-
-    npcInfo = {k: v for k, v in npcSpawnData.items() if k != 'zones'}
-    zones = npcSpawnData['zones']
-
-    for zoneShort, zoneData in zones.items():
-      key = (npcInfo['name'], npc['effective_chance'], zoneShort)
-
-      if key not in aggregated:
-        aggregated[key] = {
-          'npc': {
-            'name': npcInfo['name'],
-            'lastname': npcInfo.get('lastname'),
-            'race': npcInfo.get('race'),
-            'class': npcInfo.get('class'),
-            'bodytype': npcInfo.get('bodytype'),
-            'runspeed': npcInfo.get('runspeed'),
-            'level': npcInfo.get('level'),
-            'maxlevel': npcInfo.get('level')  # Initial max same as current level
-          },
-          'effective_chance': npc['effective_chance'],
-          'zones': {
-            zoneShort: {
-              'zone_longname': zoneData['zone_longname'],
-              'spawnpoints': list(zoneData['spawnpoints'])
-            }
-          }
-        }
-      else:
-        existing = aggregated[key]
-        existing['npc']['level'] = min(existing['npc']['level'], npcInfo['level'])
-        existing['npc']['maxlevel'] = max(existing['npc']['maxlevel'], npcInfo['level'])
-
-        if zoneShort not in existing['zones']:
-          existing['zones'][zoneShort] = {
-            'zone_longname': zoneData['zone_longname'],
-            'spawnpoints': list(zoneData['spawnpoints'])
-          }
-        else:
-          existing['zones'][zoneShort]['spawnpoints'].extend(zoneData['spawnpoints'])
-
-  return list(aggregated.values())
-
-def get_item_merchants(itemId: int) -> List[int]:
-  db = getDb()
-  with db.cursor() as cur:
-    cur.execute("""
-      SELECT merchantListEntries
-      FROM pok_item_sources
-      WHERE item_id = %s
-    """, (itemId,))
-    row = cur.fetchone()
-
-  if not row or not row[0]:
-    return []
-
-  return [int(mid) for mid in row[0].split(',')]
-
-def get_item_recipes(itemId: int) -> List[int]:
-  db = getDb()
-  with db.cursor() as cur:
-    cur.execute("""
-      SELECT tradeskillRecipeEntries
-      FROM pok_item_sources
-      WHERE item_id = %s
-    """, (itemId,))
-    row = cur.fetchone()
-
-  if not row or not row[0]:
-    return []
-
-  return [int(rid) for rid in row[0].split(',')]

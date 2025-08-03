@@ -219,66 +219,204 @@ def register(app):
           return parts.join(' ') || '0s';
         }
 
+        function formatPrice(cp) {
+          const pp = Math.floor(cp / 1000);
+          cp %= 1000;
+          const gp = Math.floor(cp / 100);
+          cp %= 100;
+          const sp = Math.floor(cp / 10);
+          const cpLeft = cp % 10;
+
+          const parts = [];
+          if (pp) parts.push(`${pp}p`);
+          if (gp) parts.push(`${gp}g`);
+          if (sp) parts.push(`${sp}s`);
+          if (cpLeft || parts.length === 0) parts.push(`${cpLeft}c`);
+
+          return parts.join(' ');
+        }
+
+        function renderDrops(drops) {
+          if (!drops.length) return '';
+
+          const zonesGrouped = {};
+
+          for (const drop of drops) {
+            const npc = drop.npc || {};
+            const zones = drop.zones || {};
+
+            for (const [zoneShort, zoneData] of Object.entries(zones)) {
+              const zoneKey = `${zoneData.zone_longname} (${zoneShort})`;
+              if (!zonesGrouped[zoneKey]) zonesGrouped[zoneKey] = [];
+
+              zonesGrouped[zoneKey].push({
+                name: npc.name || 'Unknown',
+                lastname: npc.lastname || '',
+                level: npc.maxlevel && npc.maxlevel !== npc.level
+                  ? `${npc.level} - ${npc.maxlevel}`
+                  : `${npc.level ?? '??'}`,
+                chance: drop.effective_chance ?? '?',
+                spawnpoints: zoneData.spawnpoints || []
+              });
+            }
+          }
+
+          return Object.entries(zonesGrouped).map(([zone, npcList]) => {
+            return `
+              <div class="drop-zone-block">
+                <strong>${zone}</strong>
+                <ul class="drop-npc-list">
+                  ${npcList.map(npc => `
+                    <li>
+                      <b>${npc.name} ${npc.lastname}</b> (Lvl ${npc.level}, ${npc.chance}%)
+                      <ul class="spawnpoint-list">
+                        ${npc.spawnpoints.map(sp => {
+                          const tooltip = sp.placeholders?.length
+                            ? ` title="Placeholders: ${sp.placeholders.replace(/"/g, '&quot;')}"`
+                            : '';
+                          const chance = sp.chance != null ? ` (${sp.chance}%)` : '';
+                          return `<li${tooltip}>(${sp.y}, ${sp.x}, ${sp.z}) – ${formatRespawnTime(sp.respawntime)}${chance}</li>`;
+                        }).join('')}
+                      </ul>
+                    </li>
+                  `).join('')}
+                </ul>
+              </div>
+            `;
+          }).join('');
+        }
+
+        function renderMerchants(merchants) {
+          if (!merchants.length) return '';
+
+          const byZone = {};
+
+          for (const m of merchants) {
+            const zone = m.zone_longname || m.zone_shortname || 'Unknown Zone';
+            if (!byZone[zone]) byZone[zone] = [];
+            byZone[zone].push(m);
+          }
+
+          return Object.entries(byZone).map(([zone, list]) => {
+            return `
+              <div class="merchant-zone-block">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <strong>${zone}</strong>
+                </div>
+                <ul class="merchant-list">
+                  ${list.map(m => {
+                    const coords = (m.x != null && m.y != null)
+                      ? ` (${m.y}, ${m.x}${m.z != null ? `, ${m.z}` : ''})`
+                      : '';
+                    const chance = (m.chance != null && m.chance < 100) ? ` (${m.chance}% chance)` : '';
+                    return `<li><b>${m.Name || 'Unknown Merchant'}</b>${coords}${chance}</li>`;
+                  }).join('')}
+                </ul>
+              </div>
+            `;
+          }).join('');
+        }
+
+        function renderRecipes(recipes) {
+          if (!recipes.length) return '';
+
+          // Group recipes by name
+          const grouped = {};
+          for (const recipe of recipes) {
+            if (!grouped[recipe.name]) {
+              grouped[recipe.name] = [];
+            }
+            grouped[recipe.name].push(recipe);
+          }
+
+          return Object.entries(grouped).map(([name, variants]) => {
+            return `
+              <div class="recipe-block">
+                <h4 class="recipe-title">${name}</h4>
+                <div class="recipe-section">
+                  ${variants.map(variant => {
+                    const list = (label, items, countField = 'componentCount') => {
+                      if (!items?.length) return '';
+                      return `
+                        <div class="recipe-subsection">
+                          <b>${label}:</b>
+                          <ul class="recipe-list">
+                            ${items.map(i => `
+                              <li>${i[countField]} x 
+                                <span class="eqtooltip" data-type="item" data-id="${i.id}">${i.name}</span>
+                              </li>`).join('')}
+                          </ul>
+                        </div>`;
+                    };
+
+                    const failItems = variant.ingredients?.filter(i => i.failCount > 0);
+                    const successReturn = variant.ingredients?.filter(i => i.successCount > 0 && i.componentCount > 0);
+                    const outputs = variant.outputs?.filter(i => i.successCount > 0 && i.componentCount === 0);
+
+                    return `
+                      <div class="recipe-variant">
+                        <div class="recipe-variant-meta">
+                          <span class="tradeskill-name">${variant.tradeskill_name}</span>
+                          <span class="skill-needed">Min: ${variant.skillNeeded}</span>
+                          <span class="trivial">Trivial: ${variant.trivial}</span>
+                        </div>
+                        <div class="recipe-columns">
+                          <div class="recipe-left-column">
+                            ${list("Ingredients", variant.ingredients)}
+                            ${list("Makes", outputs, "successCount")}
+                          </div>
+                          <div class="recipe-right-column">
+                            ${list("Returned on Failure", failItems, "failCount")}
+                            ${list("Returned on Success", successReturn, "successCount")}
+                          </div>
+                        </div>
+                      </div>`;
+                  }).join('')}
+                </div>
+              </div>`;
+          }).join('');
+        }
+
         function bindResultItemClicks() {
           document.querySelectorAll('.result-item').forEach(itemElement => {
             itemElement.addEventListener('click', async () => {
               const detailsBox = itemElement.querySelector('.result-details');
               if (!detailsBox.style.display || detailsBox.style.display === 'none') {
                 const itemId = itemElement.getAttribute('data-itemid');
-                const res = await fetch(`/api/item/${itemId}/drops`);
-                const drops = await res.json();
+                const [dropsRes, merchantsRes, recipesRes] = await Promise.all([
+                  fetch(`/api/item/${itemId}/drops`),
+                  fetch(`/api/item/${itemId}/merchants`),
+                  fetch(`/api/item/${itemId}/recipes`)
+                ]);
 
-                if (!drops.length) {
-                  detailsBox.innerHTML = '<em>No drop sources available.</em>';
-                } else {
-                  detailsBox.innerHTML = drops.map(drop => {
-                    const npc = drop.npc || {};
-                    const zones = drop.zones || {};
-                    let zoneDetails = '';
+                const drops = await dropsRes.json();
+                const merchants = await merchantsRes.json();
+                const recipes = await recipesRes.json();
 
-                    for (const [zoneShort, zoneData] of Object.entries(zones)) {
-                      const spawnPoints = zoneData.spawnpoints || [];
-                      const spawnPointsText = spawnPoints.length
-                        ? spawnPoints.map(sp => {
-                            const hasPlaceholders = sp.placeholders && sp.placeholders.length > 0;
-                            const chanceText = hasPlaceholders && sp.chance != null ? ` (${sp.chance}%)` : '';
-                            const tooltip = hasPlaceholders ? ` title="Placeholders: ${sp.placeholders.replace(/"/g, '&quot;')}"` : '';
-                            return `<span${tooltip}>(${sp.y}, ${sp.x}, ${sp.z}) ${formatRespawnTime(sp.respawntime)}${chanceText}</span>`;
-                          }).join('<br>')
-                        : '<em>No spawn points recorded</em>';
+                const parts = [];
 
-                      zoneDetails += `
-                        <div class="zone-section">
-                          <strong>${zoneData.zone_longname} (${zoneShort})</strong><br>
-                          Spawn Points:<br>
-                          ${spawnPointsText}
-                        </div><br>`;
-                    }
-
-                    let levelText = '??';
-                    if (npc.level != null) {
-                      levelText = (npc.maxlevel != null && npc.maxlevel !== npc.level)
-                        ? `${npc.level} - ${npc.maxlevel}`
-                        : `${npc.level}`;
-                    }
-
-                    return `
-                      <div class="drop-source">
-                        <strong>NPC:</strong> ${npc.name || 'Unknown'} ${npc.lastname || ''}<br>
-                        Level: ${levelText}<br>
-                        Effective Chance: ${drop.effective_chance}%<br>
-                        ${zoneDetails}
-                      </div>`;
-                  }).join('<hr>');
-
-                  detailsBox.innerHTML += `
-                    <hr>
-                    <details>
-                      <summary>Raw JSON Data</summary>
-                      <pre>${JSON.stringify(drops, null, 2)}</pre>
-                    </details>
-                  `;
+                if (drops.length) {
+                  parts.push(`<div class="source-header"><h3>Drops</h3></div>`);
+                  parts.push(renderDrops(drops));
                 }
+
+                if (merchants.length) {
+                  const merchantPrice = merchants?.[0]?.price != null ? formatPrice(merchants[0].price) : null;
+                  parts.push(`
+                    <div class="source-header">
+                      <h3>Merchants</h3>
+                      ${merchantPrice ? `<span class="merchant-price">${merchantPrice}</span>` : ''}
+                    </div>
+                  `);
+                  parts.push(renderMerchants(merchants, true));
+                }
+
+                if (recipes.length) {
+                  parts.push(`<div class="source-header"><h3>Tradeskill Recipes</h3></div>`);
+                  parts.push(renderRecipes(recipes));
+                }
+
+                detailsBox.innerHTML = parts.join('');
                 detailsBox.style.display = 'block';
               } else {
                 detailsBox.style.display = 'none';

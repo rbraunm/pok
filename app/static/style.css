@@ -152,7 +152,7 @@ h2 {
 
 form {
   position: relative;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
@@ -550,4 +550,201 @@ tr:nth-child(even) td {
   color: #ccc;
   font-style: italic;
   opacity: 0.7;
+}
+
+.eq-color-grey { color: #888 !important; }
+.eq-color-green { color: #4caf50 !important; }
+.eq-color-lightblue { color: #03a9f4 !important; }
+.eq-color-blue { color: #2196f3 !important; }
+.eq-color-yellow { color: #ffc107 !important; }
+.eq-color-orange { color: #ff9800 !important; }
+.eq-color-red { color: #f44336 !important; }
+
+.recipe-block,
+.drop-zone-block,
+.merchant-zone-block {
+  margin: .25rem 0;
+  padding: 0.3rem;
+  background: #2f3e4f;
+  border-radius: 6px;
+  border-left: 4px solid #1abc9c;
+}
+
+.recipe-list,
+.drop-npc-list,
+.merchant-list,
+.spawnpoint-list {
+  margin: 0 0 0 1.25rem !important;
+  padding: 0;
+  list-style-type: disc;
+}
+
+.source-header {
+  display: flex;
+  align-items: baseline;
+  border-bottom: 1px solid #3c5c6e;
+  padding-bottom: 0.25rem;
+  margin-top: .25rem;
+  margin-bottom: 0.5rem;
+}
+
+.source-header h3 {
+  color: #1abc9c;
+  margin: 0 4px 0 0;
+  font-size: 1.1rem;
+}
+
+.source-header .merchant-price {
+  font-size: 0.75rem;
+  color: #999999;
+}
+
+.drop-npc-list > li {
+  margin-bottom: 0.5rem;
+}
+
+.recipe-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+.recipe-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.recipe-subsection {
+  font-size: 0.95em;
+}
+
+.recipe-variant {
+  background: #263445;
+  border-radius: 4px;
+  border: 1px solid #3c4f63;
+  display: flex;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.trivial {
+  font-size: 0.8rem;
+}
+
+.recipe-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  width: 100%;
+}
+
+.recipe-left-column {
+  width: 55%;
+}
+.recipe-right-column {
+  width: 35%;
+}
+
+.section-separator {
+  border: none;
+  border-top: 1px solid #3e5266;
+  margin: 1rem 0;
+}
+
+.recipe-variant-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9em;
+  color: #bdc3c7;
+  width: 100%;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.recipe-meta-row span {
+  flex: 1 1 auto;
+  min-width: 100px;
+}
+
+.character-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.class-portrait {
+  width: 64px;
+  height: 128px;
+  margin-top: 15px;
+}
+
+.character-details {
+  flex-grow: 1;
+}
+
+.tradeskill-list {
+  background: #1e2a38;
+  border-radius: 10px;
+  border: 1px solid #3c5c6e;
+  padding: 0.75rem;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.25);
+}
+
+.tradeskill-list h3 {
+  margin-top: 0;
+  font-size: 1.1rem;
+  border-bottom: 1px solid #3c5c6e;
+  margin-bottom: 0.2rem;
+  padding-bottom: 0.2rem;
+  color: #1abc9c;
+  font-weight: bold;
+}
+
+.tradeskill-list ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.tradeskill-list li {
+  margin: 0.3rem 0;
+  padding-left: 0;
+}
+
+.tradeskill-list a {
+  color: #b8d8f8;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.tradeskill-list a:hover {
+  text-decoration: underline;
+}
+
+.spell-level-block {
+  margin: .25rem 0;
+  padding: 0.3rem;
+  background: #2f3e4f;
+  border-radius: 6px;
+  border-left: 4px solid #1abc9c;
+}
+
+.spell-level-title {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #1abc9c;
+}
+
+.spell-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.spell-list li {
+  margin: 0.25rem 0;
 }
