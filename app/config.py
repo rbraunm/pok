@@ -1,7 +1,7 @@
-import os
 import json
+from applogging import get_logger
+logger = get_logger(__name__)
 
-POK_DEBUG = os.getenv("POK_DEBUG", "false").lower() == "true"
 EQEMU_CONFIG_PATH = "/app/server/eqemu_config.json"
 
 def getEQEMUConfig():

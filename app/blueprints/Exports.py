@@ -7,6 +7,8 @@ from flask import Response, json
 from web.utils import renderPage, PoKJSONEncoder
 from api.models.exports import get_sample
 from api.models.schema import list_tables, describe_table
+from applogging import get_logger
+logger = get_logger(__name__)
 
 def register(app):
   @app.route(URL_PREFIX)

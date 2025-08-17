@@ -5,16 +5,43 @@ services:
       dockerfile: Dockerfile
     image: eqemu-pok-web:latest
     container_name: eqemu_pok_web
+    user: 1000:1000
+    init: true
+    stop_signal: SIGTERM
+    stop_grace_period: 60s
     restart: unless-stopped
-    user: "1000:1000"
+    ports:
+      - 8202:8202
     volumes:
       - /opt/eqemu/akk-stack/server:/app/server:ro
-    ports:
-      - "8202:8202"
     environment:
-      - POK_DEBUG=true
-      - PYTHONUNBUFFERED=1
+      GUNICORN_CMD_ARGS: --config /app/web/gunicorn.conf.py
+      POK_LOG_LEVEL: debug
+      POK_LOG_TZ: America/Phoenix
+      PYTHONUNBUFFERED: 1
+      PYTHONPATH: /app/web
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, json, urllib.request, socket
+          socket.setdefaulttimeout(2)
+          try:
+              u = urllib.request.urlopen('http://127.0.0.1:8202/health')
+              body = u.read().decode('utf-8','ignore')
+              ct = u.headers.get('content-type','')
+              ok = (json.loads(body).get('status','').lower()=='ok') if ('json' in ct or body.strip().startswith('{')) else (body.strip().lower()=='ok')
+              sys.exit(0 if (u.getcode()==200 and ok) else 1)
+          except Exception:
+              sys.exit(1)
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+
 networks:
   default:
-    name: akk-stack_backend
     external: true
+    name: akk-stack_backend

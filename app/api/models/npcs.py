@@ -1,7 +1,10 @@
-from typing import List, Dict, Any
+import re
+from typing import List, Dict, Any, Tuple, Optional
 import pymysql.cursors
-from api.db import getDb
+from db import getDb
 from api.models.eqemu import get_current_expansion
+from applogging import get_logger
+logger = get_logger(__name__)
 
 NPC_TYPES_TABLE_SELECT_FIELDS = """
   nt.id,
@@ -33,7 +36,9 @@ NPC_TYPES_TABLE_SELECT_FIELDS = """
   nt.Accuracy,
   nt.slow_mitigation,
   nt.attack_delay,
-  nt.attack_speed
+  nt.attack_speed,
+  nt.raid_target,
+  nt.rare_spawn
 """
 
 class NpcNotFoundError(Exception):
@@ -70,7 +75,7 @@ def get_npc_spawnpoints(npcId: int) -> Dict[str, Any]:
     expansionRule = get_current_expansion()
 
     sql = f"""
-      SELECT   
+      SELECT
         {NPC_TYPES_TABLE_SELECT_FIELDS},
         z.short_name AS zone_shortname,
         z.long_name AS zone_longname,
@@ -137,22 +142,23 @@ def get_npc_spawnpoints(npcId: int) -> Dict[str, Any]:
   npcInfo['zones'] = zoneGrouped
   return npcInfo
 
-
 def get_item_drops(itemId: int) -> List[Dict[str, Any]]:
-  sql = """
+  sql = f"""
     SELECT
-      nt.id AS npc_id,
+      {NPC_TYPES_TABLE_SELECT_FIELDS},
       lde.item_id,
-      lde.chance AS base_chance,
-      ROUND(le.multiplier, 2) AS multiplier,
-      ROUND(lde.chance * le.multiplier, 2) AS effective_chance
+      le.multiplier as loottable_multiplier,
+      lde.chance,
+      lde.multiplier
     FROM lootdrop_entries lde
     JOIN loottable_entries le ON lde.lootdrop_id = le.lootdrop_id
     JOIN loottable lt ON le.loottable_id = lt.id
     JOIN npc_types nt ON lt.id = nt.loottable_id
     WHERE lde.item_id = %s
-    GROUP BY nt.id
-    ORDER BY effective_chance DESC
+    ORDER BY
+      GREATEST(le.multiplier, lde.multiplier) DESC,
+      LEAST(le.multiplier, lde.multiplier) DESC,
+      lde.chance DESC
   """
 
   db = getDb()
@@ -160,53 +166,229 @@ def get_item_drops(itemId: int) -> List[Dict[str, Any]]:
     cur.execute(sql, (itemId,))
     npcDrops = cur.fetchall()
 
-  aggregated = {}
+  # group per (npc_name, zoneShort, drop_table_multiplier, drop_chance, drop_multiplier)
+  aggregated: Dict[Tuple[str, str, int, float, int], Dict[str, Any]] = {}
+
+  def _meta_from(npc_info: Dict[str, Any], row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+      'id'      : npc_info.get('id') or row.get('id'),
+      'name'    : npc_info.get('name'),
+      'lastname': npc_info.get('lastname'),
+      'race'    : npc_info.get('race'),
+      'class'   : npc_info.get('class'),
+      'bodytype': npc_info.get('bodytype'),
+      'runspeed': npc_info.get('runspeed'),
+      'level'   : npc_info.get('level'),
+      'maxlevel': npc_info.get('level'),
+    }
+  
+  def _safe_int(v: Any, default: int = 0) -> int:
+    try:
+      return int(float(v))
+    except Exception:
+      return default
+
+  def _safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+      return float(v)
+    except Exception:
+      return default
+
+  def _qf(v: Any, places: int = 6) -> float:
+    """Quantize floats for dictionary keys (avoid 5 vs 5.000000)."""
+    return round(_safe_float(v, 0.0), places)
+
+  def _spawnpoint_key(sp: Dict[str, Any]) -> Tuple:
+    sid = sp.get('spawn2_id') or sp.get('spawn_id') or sp.get('id')
+    if sid is not None:
+      return ('id', int(sid))
+    x = _safe_float(sp.get('x') if sp.get('x') is not None else sp.get('loc_x'))
+    y = _safe_float(sp.get('y') if sp.get('y') is not None else sp.get('loc_y'))
+    z = _safe_float(sp.get('z') if sp.get('z') is not None else sp.get('loc_z'))
+    grid = sp.get('grid') if sp.get('grid') is not None else sp.get('pathgrid')
+    try:
+      grid = int(grid) if grid is not None else 0
+    except Exception:
+      grid = 0
+    return ('pos', round(x, 2), round(y, 2), round(z, 2), grid)
+
+  def _merge_ph(phMap, ph):
+    """
+    Merge placeholder(s) into phMap.
+
+    Accepts:
+      - dict: {name|npc_name|npc|id}
+      - list/tuple/set of dicts/strings/ints
+      - string (supports comma/pipe separated)
+      - int/other scalars
+    """
+    if not ph:
+      return
+
+    def _add(name):
+      if name is None:
+        return
+      s = str(name).strip()
+      if not s:
+        return
+      phMap[s] = phMap.get(s, 0) + 1
+
+    def _from_dict(d):
+      # Prefer name fields; fall back to id
+      return (
+        d.get('name') or
+        d.get('npc_name') or
+        d.get('npc') or
+        (str(d.get('id')) if d.get('id') is not None else None)
+      )
+
+    # Single dict
+    if isinstance(ph, dict):
+      _add(_from_dict(ph))
+      return
+
+    # Iterable of mixed types
+    if isinstance(ph, (list, tuple, set)):
+      for x in ph:
+        if isinstance(x, dict):
+          _add(_from_dict(x))
+        else:
+          if isinstance(x, str) and (',' in x or '|' in x):
+            for token in re.split(r'[,\|]+', x):
+              _add(token)
+          else:
+            _add(x)
+      return
+
+    # Scalar (string/int/etc.)
+    if isinstance(ph, str) and (',' in ph or '|' in ph):
+      for token in re.split(r'[,\|]+', ph):
+        _add(token)
+    else:
+      _add(ph)
+
+  def _aggregate_spawnpoints(points: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    sp_map: Dict[Tuple, Dict[str, Any]] = {}
+
+    for sp in points or []:
+      key = _spawnpoint_key(sp)
+
+      if key not in sp_map:
+        base: Dict[str, Any] = {}
+        # keep identity/position fields; NOTE: use respawntime (not respawn)
+        for k in ('spawn2_id', 'spawn_id', 'id', 'x', 'y', 'z', 'heading',
+                  'respawntime', 'grid', 'pathgrid', 'room'):
+          if k in sp:
+            base[k] = sp[k]
+
+        # ensure fields exist
+        base['chance'] = 0.0
+        base['_ph_map'] = {}
+
+        # normalize respawntime to an int
+        base['respawntime'] = _safe_int(base.get('respawntime'), 0)
+
+        sp_map[key] = base
+
+      rec = sp_map[key]
+
+      # accumulate chance from any of the source columns used earlier
+      rec['chance'] += _safe_float(sp.get('chance') or sp.get('spawn_chance') or sp.get('prob'))
+
+      # merge PHs
+      _merge_ph(rec['_ph_map'], sp.get('ph') or sp.get('ph_list') or sp.get('placeholders'))
+
+      # merge respawntime: prefer smallest positive; replace 0/None
+      secs = _safe_int(sp.get('respawntime'), 0)
+      cur  = _safe_int(rec.get('respawntime'), 0)
+      if secs > 0 and (cur == 0 or secs < cur):
+        rec['respawntime'] = secs
+
+    # finalize list
+    out: List[Dict[str, Any]] = []
+    for rec in sp_map.values():
+      ph_map = rec.pop('_ph_map', None)
+      if ph_map:
+        rec['ph'] = [
+          {'name': n, 'chance': c}
+          for n, c in sorted(ph_map.items(), key=lambda kv: kv[1], reverse=True)
+        ]
+      out.append(rec)
+
+    out.sort(key=lambda r: r.get('chance', 0.0), reverse=True)
+    return out
 
   for npc in npcDrops:
-    npcSpawnData = get_npc_spawnpoints(npc['npc_id'])
+    npcSpawnData = get_npc_spawnpoints(npc['id'])
     if not npcSpawnData or not npcSpawnData.get('zones'):
       continue
 
     npcInfo = {k: v for k, v in npcSpawnData.items() if k != 'zones'}
     zones = npcSpawnData['zones']
 
-    for zoneShort, zoneData in zones.items():
-      key = (npcInfo['name'], npc['effective_chance'], zoneShort)
+    cur_level = npcInfo.get('level')
+    score = float(cur_level) if cur_level is not None else float("-inf")
+    meta = _meta_from(npcInfo, npc)
 
-      if key not in aggregated:
-        aggregated[key] = {
-          'npc': {
-            'name': npcInfo['name'],
-            'lastname': npcInfo.get('lastname'),
-            'race': npcInfo.get('race'),
-            'class': npcInfo.get('class'),
-            'bodytype': npcInfo.get('bodytype'),
-            'runspeed': npcInfo.get('runspeed'),
-            'level': npcInfo.get('level'),
-            'maxlevel': npcInfo.get('level')  # Initial max same as current level
-          },
-          'effective_chance': npc['effective_chance'],
+    # normalize drop fields for grouping
+    dtm = int(npc['loottable_multiplier'])
+    dch = _qf(npc['chance'])         # normalized float for key
+    dmp = int(npc['multiplier'])
+
+    for zoneShort, zoneData in zones.items():
+      zlong = zoneData.get('zone_longname')
+      new_points = list(zoneData.get('spawnpoints') or [])
+      group_key = (npcInfo['name'], zoneShort, dtm, dch, dmp)
+
+      if group_key not in aggregated:
+        aggregated[group_key] = {
+          'npc'                 : meta.copy(),   # replaced by best variant for this (name,zone,drop*) group
+          '_best_meta'          : meta.copy(),
+          '_best_score'         : score,
+          '_min_level'          : cur_level,
+          '_max_level'          : cur_level,
+          'drop_table_multiplier': dtm,
+          'drop_chance'         : float(dch),
+          'drop_multiplier'     : dmp,
           'zones': {
             zoneShort: {
-              'zone_longname': zoneData['zone_longname'],
-              'spawnpoints': list(zoneData['spawnpoints'])
+              'zone_longname': zlong,
+              'spawnpoints'  : _aggregate_spawnpoints(new_points)
             }
           }
         }
       else:
-        existing = aggregated[key]
-        existing['npc']['level'] = min(existing['npc']['level'], npcInfo['level'])
-        existing['npc']['maxlevel'] = max(existing['npc']['maxlevel'], npcInfo['level'])
+        g = aggregated[group_key]
 
-        if zoneShort not in existing['zones']:
-          existing['zones'][zoneShort] = {
-            'zone_longname': zoneData['zone_longname'],
-            'spawnpoints': list(zoneData['spawnpoints'])
-          }
-        else:
-          existing['zones'][zoneShort]['spawnpoints'].extend(zoneData['spawnpoints'])
+        # expand level range inside this group
+        if g['_min_level'] is None or (cur_level is not None and cur_level < g['_min_level']):
+          g['_min_level'] = cur_level
+        if g['_max_level'] is None or (cur_level is not None and cur_level > g['_max_level']):
+          g['_max_level'] = cur_level
 
-  return list(aggregated.values())
+        # choose best variant's npc meta (e.g., highest level)
+        if score > g['_best_score']:
+          g['_best_score'] = score
+          g['_best_meta'] = meta.copy()
+
+        # re-aggregate this zone's spawnpoints (sum chances & PHs)
+        existing = g['zones'].get(zoneShort, {'zone_longname': zlong, 'spawnpoints': []})
+        g['zones'][zoneShort] = {
+          'zone_longname': zlong or existing.get('zone_longname'),
+          'spawnpoints'  : _aggregate_spawnpoints(list(existing.get('spawnpoints') or []) + new_points)
+        }
+
+  # finalize each group
+  out: List[Dict[str, Any]] = []
+  for g in aggregated.values():
+    best = g.pop('_best_meta')
+    g['npc'] = best
+    g['npc']['level'] = g.pop('_min_level')
+    g['npc']['maxlevel'] = g.pop('_max_level')
+    g.pop('_best_score', None)
+    out.append(g)
+
+  return out
 
 def get_item_merchants(itemId: int) -> List[int]:
   db = getDb()

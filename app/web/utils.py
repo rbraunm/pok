@@ -6,14 +6,10 @@ from flask import render_template
 from decimal import Decimal
 import datetime
 from urllib.parse import urlencode
+from applogging import get_logger
+logger = get_logger(__name__)
 
 NAV_LINKS: list[tuple[str, str]] = []
-
-def getNameFromBitmask(value: int, mapping: Dict[str, int]) -> str:
-  for name, bit in mapping.items():
-    if bit == (1 << (value - 1)):
-      return name
-  return f"Unknown ({value})"
 
 def registerNavLink(name: str, url: str) -> None:
     NAV_LINKS.append((name, url))
@@ -91,3 +87,9 @@ class PoKJSONEncoder(json.JSONEncoder):
         if isinstance(obj, Decimal):
             return float(obj)
         return super().default(obj)
+
+def getNameFromBitmask(value: int, mapping: Dict[str, int]) -> str:
+  for name, bit in mapping.items():
+    if bit == (1 << (value - 1)):
+      return name
+  return f"Unknown ({value})"

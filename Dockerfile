@@ -1,22 +1,21 @@
+# syntax=docker/dockerfile:1.7
 FROM python:3.13-slim
 
+# tzdata so ZoneInfo('America/Phoenix') works; ca-certs for HTTPS
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends tzdata ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN groupadd -g 1000 eqemu \
- && useradd -r -u 1000 -g eqemu eqemu
+ && useradd -r -u 1000 -g eqemu -d /app eqemu
 
 WORKDIR /app
 
-COPY app ./web/
-COPY requirements.txt ./
-COPY entrypoint.sh ./
-
-RUN chown -R eqemu:eqemu /app
+COPY --chown=eqemu:eqemu requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN chmod +x ./entrypoint.sh
+
+COPY --chown=eqemu:eqemu app ./web/
+COPY --chown=eqemu:eqemu --chmod=0755 entrypoint.sh /app/entrypoint.sh
 
 USER eqemu
-
-ENV POK_DEBUG=false
-ENV PYTHONPATH=/app/web
-
-ENTRYPOINT ["./entrypoint.sh"]
-
+ENTRYPOINT ["/app/entrypoint.sh"]

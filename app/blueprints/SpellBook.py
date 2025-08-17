@@ -4,8 +4,11 @@ from pathlib import Path
 import html
 from flask import request
 from web.utils import renderPage, getNameFromBitmask
-from api.models.characters import search_characters, get_character, get_deity_name, CLASS_BITMASK, RACE_BITMASK
+from api.models.characters import search_characters, get_character, CLASS_BITMASK
 from api.models.spells import get_spells_for_character
+from api.renderers.characters import render_character_summary
+from applogging import get_logger
+logger = get_logger(__name__)
 
 URL_PREFIX = "/" + Path(__file__).stem
 
@@ -17,24 +20,6 @@ def group_spells_by_level(spells):
   for level in grouped:
     grouped[level].sort(key=lambda s: s["name"])
   return dict(sorted(grouped.items(), reverse=True))
-
-def render_character_summary(character):
-  className = getNameFromBitmask(character['class_id'], CLASS_BITMASK).lower()
-  raceName = getNameFromBitmask(character['race_id'], RACE_BITMASK)
-  deityName = get_deity_name(character['deity_id'])
-
-  return f"""
-    <div class="character-summary">
-      <img src="/static/img/class_portraits/{className}.gif" alt="{className} portrait" class="class-portrait" />
-      <div class="character-details">
-        <h2>{html.escape(character['name'])}</h2>
-        <p>Class: {className.title()}<br>
-        Level: {character['level']}<br>
-        Race: {raceName}<br>
-        Deity: {deityName}</p>
-      </div>
-    </div>
-  """
 
 def render_spell_list(grouped_spells):
   parts = []

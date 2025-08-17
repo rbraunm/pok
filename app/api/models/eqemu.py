@@ -1,4 +1,6 @@
-from api.db import getDb
+from db import getDb
+from applogging import get_logger
+logger = get_logger(__name__)
 
 def get_current_expansion() -> int:
   sql = """

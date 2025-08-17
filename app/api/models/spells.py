@@ -1,8 +1,10 @@
 from typing import List, Dict, Any
 import pymysql.cursors
-from api.db import getDb
+from db import getDb, DB_PREFIX
 from api.models.npcs import get_npc_spawnpoints
 from api.models.characters import get_character
+from applogging import get_logger
+logger = get_logger(__name__)
 
 RESIST_TYPES = {
   0: "Unresistable",
@@ -415,7 +417,7 @@ def search_spells(query: str, limit: int = 20) -> List[Dict[str, Any]]:
     SELECT {SPELL_TABLE_SELECT_FIELDS}
     FROM spells_new s
     LEFT JOIN items i ON s.id = i.scrolleffect
-    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
     WHERE name LIKE %s
       AND (pis.lootdropEntries IS NOT NULL OR
           pis.merchantListEntries IS NOT NULL OR
@@ -440,16 +442,19 @@ def get_spells_for_character(charId: int) -> List[Dict[str, Any]]:
   classColumn = f"classes{charClassId}"
 
   sql = f"""
-    SELECT
-      {SPELL_TABLE_SELECT_FIELDS},
-      s.{classColumn} AS required_level,
-      CASE WHEN cs.id IS NOT NULL THEN 1 ELSE 0 END AS known
+    SELECT {SPELL_TABLE_SELECT_FIELDS},
+      s.classes12 AS required_level,
+      CASE WHEN cs.id IS NOT NULL THEN 1 ELSE 0 END AS known,
+      pis.lootdropEntries,
+      pis.merchantListEntries,
+      pis.tradeskillRecipeEntries,
+      pis.questEntries
     FROM spells_new s
     LEFT JOIN items i ON s.id = i.scrolleffect
-    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
     LEFT JOIN character_spells cs ON s.id = cs.spell_id AND cs.id = %s
-    WHERE s.{classColumn} > 0 AND s.{classColumn} <= %s
-      AND (pis.lootdropEntries IS NOT NULL OR
+    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+    WHERE s.{classColumn} > 0 AND s.{classColumn} <= %s AND
+        (pis.lootdropEntries IS NOT NULL OR
           pis.merchantListEntries IS NOT NULL OR
           pis.tradeskillRecipeEntries IS NOT NULL OR
           pis.questEntries IS NOT NULL)
@@ -460,7 +465,6 @@ def get_spells_for_character(charId: int) -> List[Dict[str, Any]]:
     cur.execute(sql, (charId, charLevel))
     return cur.fetchall()
 
-
 def get_spell(spellId: int) -> Dict[str, Any]:
   db = getDb()
   with db.cursor(pymysql.cursors.DictCursor) as cur:
@@ -468,12 +472,8 @@ def get_spell(spellId: int) -> Dict[str, Any]:
       SELECT {SPELL_TABLE_SELECT_FIELDS}
       FROM spells_new s
       LEFT JOIN items i ON s.id = i.scrolleffect
-      LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
+      LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
       WHERE s.id = %s
-        AND (pis.lootdropEntries IS NOT NULL OR
-            pis.merchantListEntries IS NOT NULL OR
-            pis.tradeskillRecipeEntries IS NOT NULL OR
-            pis.questEntries IS NOT NULL)
       GROUP BY s.id
     """, (spellId,))
     spell = cur.fetchone()
@@ -557,11 +557,11 @@ def get_spell_drops(spellId: int) -> List[Dict[str, Any]]:
 def get_spell_merchants(spellId: int) -> List[int]:
   db = getDb()
   with db.cursor() as cur:
-    cur.execute("""
+    cur.execute(f"""
       SELECT pis.merchantListEntries
       FROM spells_new s
       JOIN items i ON i.scrolleffect = s.id
-      JOIN pok_item_sources pis ON pis.item_id = i.id
+      JOIN {DB_PREFIX}_item_sources pis ON pis.item_id = i.id
       WHERE s.id = %s
     """, (spellId,))
     row = cur.fetchone()
@@ -574,11 +574,11 @@ def get_spell_merchants(spellId: int) -> List[int]:
 def get_spell_recipes(spellId: int) -> List[int]:
   db = getDb()
   with db.cursor() as cur:
-    cur.execute("""
+    cur.execute(f"""
       SELECT pis.tradeskillRecipeEntries
       FROM spells_new s
       JOIN items i ON i.scrolleffect = s.id
-      JOIN pok_item_sources pis ON pis.item_id = i.id
+      JOIN {DB_PREFIX}_item_sources pis ON pis.item_id = i.id
       WHERE s.id = %s
     """, (spellId,))
     row = cur.fetchone()

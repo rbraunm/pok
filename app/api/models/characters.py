@@ -1,5 +1,7 @@
 from typing import List, Dict, Any
-from api.db import getDb
+from db import getDb
+from applogging import get_logger
+logger = get_logger(__name__)
 
 CHARACTER_TABLE_SELECT_FIELDS = """
   c.id,

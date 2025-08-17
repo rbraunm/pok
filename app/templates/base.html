@@ -5,7 +5,7 @@
     <title>{{ title or "Pane of Knowledge" }}</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="{{ url_for('static', filename='everquest_tooltip.js') }}" defer></script>
+    <script type="module" src="{{ url_for('static', filename='js/everquesttooltip.js') }}"></script>
   </head>
   <body>
     <header>

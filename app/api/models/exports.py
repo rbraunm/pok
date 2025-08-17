@@ -1,6 +1,8 @@
-from api.db import getDb
+from db import getDb
 import pymysql.cursors
 import re
+from applogging import get_logger
+logger = get_logger(__name__)
 
 _PLACEHOLDER   = "~private~"
 _SENSITIVE_RGX = re.compile(r"(password|e-?mail)", re.IGNORECASE)

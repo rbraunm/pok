@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 import pymysql.cursors
-from api.db import getDb
+from db import getDb, DB_PREFIX
+from applogging import get_logger
+logger = get_logger(__name__)
 
 NUMERIC_ATTR_MAP: Dict[str, str] = {
   "str": "i.astr",
@@ -26,6 +28,47 @@ NUMERIC_ATTR_MAP: Dict[str, str] = {
   "dr": "i.dr",
   "pr": "i.pr",
 }
+
+# ToDo: add new item sources:
+# 1) Purchased from standard merchants (coin)
+#    Where: merchantlist.item (per-merchant, per-slot). Join items.id = merchantlist.item.
+# 2) Ground spawns
+#    Where: ground_spawns.item (per zone/coords). Simple lookup by item.
+# 3) Foraged
+#    Where: forage.Itemid (per zone). Join items.id = forage.Itemid.
+# 4) Fished
+#    Where: fishing.Itemid (per zone). Join items.id = fishing.Itemid.
+# 5) Starting items (character creation)
+#    Where: starting_items.itemid (keyed by race/class/deity/start zone).
+# 6) Crafted via tradeskill combines
+#    Where: tradeskill_recipe + tradeskill_recipe_entries.
+#           Produced items appear in tradeskill_recipe_entries.item_id with successcount > 0.
+# 7) Looted from NPCs (standard loot tables)
+#    Where: npc_types.loottable_id → loottable_entries → lootdrop_entries.item_id.
+# 8) Global loot (server/zone-wide rules)
+#    Where: global_loot attaches extra loot; ultimately resolves to lootdrop_entries.item_id.
+# 9) Chest / object-container loot (world/event chests)
+#    Where: object_contents.itemid (contents) associated with object rows spawned in a zone/instance.
+# 10) Purchased from alternate-currency merchants
+#     Where: merchantlist.alt_currency_cost > 0; merchant’s currency via
+#            npc_types.alt_currency_id ↔ alternate_currency.id.
+# 11) Task / Mission rewards
+#     Where: tasks.rewardid (single item) and/or tasks.rewardmethod pointing to reward lists.
+# 12) Summoned by spells
+#     Where: spells_new effect slots using SE_SummonItem / SE_SummonItemIntoBag; item IDs in effect base values.
+# 13) Granted directly by quests/scripts (Perl/Lua)
+#     Where: quest API (e.g., quest::summonitem / e.other:SummonItem()) — not a static DB table.
+# 14) Script-created ground objects (quest-placed pickups)
+#     Where: quest::creategroundobject(...); appears at runtime as object/object_contents entries.
+# 15) Instance/expedition chest rewards
+#     Where: same object/object_contents mechanics, spawned in instance contexts
+#            (tie back via instance_list / zone version).
+# 16) Pick Pocket
+#     Where: runtime skill logic; no dedicated “pickpocket source” table (shows as inventory changes).
+# 17) Begging
+#     Where: runtime skill logic; no dedicated DB source (occasional coin/items).
+# 18) Account claims / veteran rewards
+#     Where: veteran_reward_templates.item_id and account_rewards; surfaced via /claim.
 
 ITEM_SOURCE_OPTIONS: Dict[str, int] = {
   "drop": 1,
@@ -191,10 +234,7 @@ ITEM_TABLE_SELECT_FIELDS = """
       i.serialization,
       i.lorefile,
       i.skillmodmax,
-      i.clickname,
-      i.procname,
       i.wornname,
-      i.focusname,
       i.scrollname,
       i.healamt,
       i.spelldmg,
@@ -221,6 +261,30 @@ class ItemNotFoundError(Exception):
 def decodeBitmask(value, mapping):
   return [name for name, mask in mapping.items() if value & mask] if value else []
 
+def get_spell_options_for(kind: str) -> List[Dict[str, Any]]:
+  col_map = {"focus": "focuseffect", "click": "clickeffect", "proc": "proceffect"}
+  col = col_map.get(kind)
+  if not col:
+    return []
+
+  sql = f"""
+    SELECT DISTINCT i.{col} AS id, s.name
+    FROM items i
+    JOIN {DB_PREFIX}_item_sources pis ON pis.item_id = i.id
+    JOIN spells_new s ON s.id = i.{col}
+    WHERE i.{col} IS NOT NULL
+      AND i.{col} > 0
+      AND (pis.lootdropEntries IS NOT NULL
+          OR pis.merchantListEntries IS NOT NULL
+          OR pis.tradeskillRecipeEntries IS NOT NULL
+          OR pis.questEntries IS NOT NULL)
+    ORDER BY s.name ASC
+  """
+  db = getDb()
+  with db.cursor(pymysql.cursors.DictCursor) as cur:
+    cur.execute(sql)
+    return cur.fetchall()
+
 def search_items_filtered(
   *,
   nameQuery: str = "",
@@ -236,6 +300,9 @@ def search_items_filtered(
   augmentOption: str = "both",
   equippableOnly: bool = False,
   itemSourceFilters: List[str] | None = None,
+  focusIds: List[int] | None = None,
+  clickIds: List[int] | None = None,
+  procIds:  List[int] | None = None,
   limit: int = 25,
   offset: int = 0,
   sortField: str = "i.Name",
@@ -263,7 +330,6 @@ def search_items_filtered(
   if minLevel is not None:
     where.append("i.reqlevel >= %s")
     params.append(minLevel)
-
   if maxLevel is not None:
     where.append("i.reqlevel <= %s")
     params.append(maxLevel)
@@ -271,7 +337,6 @@ def search_items_filtered(
   if minRecLevel is not None:
     where.append("i.reclevel >= %s")
     params.append(minRecLevel)
-
   if maxRecLevel is not None:
     where.append("i.reclevel <= %s")
     params.append(maxRecLevel)
@@ -308,10 +373,24 @@ def search_items_filtered(
     if sourceConditions:
       where.append("(" + " OR ".join(sourceConditions) + ")")
 
+  def add_in_list(col: str, values: List[int] | None):
+    if values:
+      placeholders = ",".join(["%s"] * len(values))
+      where.append(f"i.{col} IN ({placeholders})")
+      params.extend(values)
+
+  add_in_list("focuseffect", focusIds)
+  add_in_list("clickeffect", clickIds)
+  add_in_list("proceffect",  procIds)
+
   whereClause = " AND ".join(where) if where else "1=1"
 
   dataSql = f"""
-    SELECT {ITEM_TABLE_SELECT_FIELDS},
+    SELECT 
+      {ITEM_TABLE_SELECT_FIELDS},
+      fs.name AS focusname,
+      cs.name AS clickname,
+      ps.name AS procname,
       pis.*,
       CASE
         WHEN pis.item_id IS NULL
@@ -320,7 +399,10 @@ def search_items_filtered(
         THEN 1 ELSE 0
       END AS unobtainable
     FROM items i
-    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN spells_new fs ON i.focuseffect = fs.id
+    LEFT JOIN spells_new cs ON i.clickeffect = cs.id
+    LEFT JOIN spells_new ps ON i.proceffect  = ps.id
     WHERE {whereClause}
     ORDER BY {sortField} {sortOrder}
     LIMIT %s OFFSET %s
@@ -329,18 +411,14 @@ def search_items_filtered(
   countSql = f"""
     SELECT COUNT(*)
     FROM items i
-    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
     WHERE {whereClause}
   """
 
   db = getDb()
   with db.cursor(pymysql.cursors.DictCursor) as cur:
-    # Run data query
-    dataParams = params + [limit, offset]
-    cur.execute(dataSql, dataParams)
+    cur.execute(dataSql, params + [limit, offset])
     items = cur.fetchall()
-
-    # Run count query
     cur.execute(countSql, params)
     total = cur.fetchone()["COUNT(*)"]
 
@@ -350,7 +428,11 @@ def get_item(itemId: int) -> Dict[str, Any]:
   db = getDb()
   with db.cursor(pymysql.cursors.DictCursor) as cur:
     cur.execute(f"""
-      SELECT {ITEM_TABLE_SELECT_FIELDS},
+      SELECT 
+        {ITEM_TABLE_SELECT_FIELDS},
+        fs.name as focusname,
+        cs.name as clickname,
+        ps.name as procname,
         pis.*,
         CASE
           WHEN pis.lootdropEntries IS NULL AND 
@@ -360,7 +442,10 @@ def get_item(itemId: int) -> Dict[str, Any]:
           THEN 1 ELSE 0
         END AS unobtainable
       FROM items i
-      LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
+      LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+      LEFT JOIN spells_new fs ON i.focuseffect = fs.id
+      LEFT JOIN spells_new cs ON i.clickeffect = cs.id
+      LEFT JOIN spells_new ps ON i.proceffect = ps.id
       WHERE i.id = %s
     """, (itemId,))
     item = cur.fetchone()

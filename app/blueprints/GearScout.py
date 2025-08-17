@@ -2,16 +2,21 @@ NAME = "Gear Scout"
 
 from pathlib import Path
 import html
-from flask import request
+from flask import request, url_for
 from web.utils import renderPage
 from api.models.characters import CLASS_BITMASK, RACE_BITMASK
+from applogging import get_logger
+
+logger = get_logger(__name__)
+
 from api.models.items import (
   search_items_filtered,
   NUMERIC_ATTR_MAP,
   BOOL_FLAG_MAP,
   SLOT_OPTIONS,
   SORTABLE_FIELDS,
-  ITEM_SOURCE_OPTIONS
+  ITEM_SOURCE_OPTIONS,
+  get_spell_options_for
 )
 
 URL_PREFIX = "/" + Path(__file__).stem
@@ -22,107 +27,221 @@ def _toI(val):
 
 def renderForm(nameRaw, slots, minLevel, maxLevel, minRecLevel, maxRecLevel, attrFilters,
                sort, sortOrder, limit, selectedClasses, selectedRaces, augmentOption, selectedSources,
-               equippableOnly, boolFilters):
+               equippableOnly, boolFilters,
+               focusOptions, clickOptions, procOptions,
+               selectedFocusIds, selectedClickIds, selectedProcIds):
   esc = lambda x: html.escape(str(x) if x is not None else "")
-  parts = ["<form method='get' action='#results'>"]
 
-  parts.append(f"<label>Name: <input type='text' name='name' value='{esc(nameRaw)}'></label><br>")
+  def select(name, label, options, selectedIds, size=5):
+    selectedSet = {str(v) for v in (selectedIds or [])}
+    html_opts = []
+    for opt in options:
+      sel = " selected" if str(opt["id"]) in selectedSet else ""
+      html_opts.append(f"<option value='{opt['id']}'{sel}>{html.escape(opt['name'])}</option>")
+    return (
+      f"<div class='gs-selectblock'>"
+      f"  <label class='gs-label'>{label}</label>"
+      f"  <select name='{name}' multiple size='{size}' class='gs-multi'>"
+      + "".join(html_opts) +
+      "  </select>"
+      "</div>"
+    )
 
-  parts.append("<fieldset><legend>Slot(s)</legend>")
-  for val, label in SLOT_OPTIONS:
-    checked = "checked" if val in slots else ""
-    parts.append(f"<label><input type='checkbox' name='slots' value='{val}' {checked}> {label}</label>")
-  parts.append("</fieldset>")
+  def select_from_pairs(name, label, pairs, selectedVals, size=5):
+    selectedSet = {str(v) for v in (selectedVals or [])}
+    opts = []
+    for val, lab in pairs:
+      val_str = html.escape(str(val))
+      lab_str = html.escape(str(lab))
+      sel = " selected" if val_str in selectedSet else ""
+      opts.append(f"<option value='{val_str}'{sel}>{lab_str}</option>")
+    return (
+      f"<div class='gs-selectblock'>"
+      f"  <label class='gs-label'>{label}</label>"
+      f"  <select name='{name}' multiple size='{size}' class='gs-multi'>"
+      + "".join(opts) +
+      "  </select>"
+      "</div>"
+    )
 
-  for attr in sorted(NUMERIC_ATTR_MAP.keys()):
-    cmpVal = next((c for a, c, _ in attrFilters if a == attr), "")
-    numVal = next((v for a, _, v in attrFilters if a == attr), "")
-    cmpOptions = "".join(f"<option value='{c}' {'selected' if c == cmpVal else ''}>{c}</option>" for c in CMP_OPTIONS)
-    parts.append(f"<label>{attr}: <select name='cmp_{attr}'>{cmpOptions}</select> "
-                 f"<input type='number' name='{attr}' value='{esc(numVal)}'></label><br>")
+  # map for fast lookup of current numeric attr filters
+  attrCmp = {a: c for a, c, _ in attrFilters}
+  attrVal = {a: v for a, _, v in attrFilters}
 
-  parts.append(f"<label>Required Level Min: <input type='number' name='minLevel' value='{esc(minLevel)}'></label> ")
-  parts.append(f"<label>Max: <input type='number' name='maxLevel' value='{esc(maxLevel)}'></label><br>")
-
-  parts.append(f"<label>Recommended Level Min: <input type='number' name='minRecLevel' value='{esc(minRecLevel)}'></label> ")
-  parts.append(f"<label>Max: <input type='number' name='maxRecLevel' value='{esc(maxRecLevel)}'></label><br>")
-
-  parts.append("<fieldset><legend>Class</legend>")
-  for cls in sorted(CLASS_BITMASK):
-    checked = "checked" if cls in selectedClasses else ""
-    parts.append(f"<label><input type='checkbox' name='class' value='{cls}' {checked}> {cls}</label>")
-  parts.append("</fieldset>")
-
-  parts.append("<fieldset><legend>Race</legend>")
-  for race in sorted(RACE_BITMASK):
-    checked = "checked" if race in selectedRaces else ""
-    parts.append(f"<label><input type='checkbox' name='race' value='{race}' {checked}> {race}</label>")
-  parts.append("</fieldset>")
-
-  parts.append("<fieldset><legend>Item Source</legend>")
+  # item source (still checkboxes)
+  srcHtml = []
   for src in ITEM_SOURCE_OPTIONS:
     checked = "checked" if src in selectedSources else ""
-    parts.append(f"<label><input type='checkbox' name='itemSource' value='{src}' {checked}> {src.title()}</label>")
-  parts.append("</fieldset>")
+    srcHtml.append(f"<label class='gs-check gs-chip'><input type='checkbox' name='itemSource' value='{src}' {checked}><span>{src.title()}</span></label>")
 
-  parts.append(
-    "<label>Augmentations: <select name='augmentOption'>"
-    f"<option value='both' {'selected' if augmentOption == 'both' else ''}>Both</option>"
-    f"<option value='only' {'selected' if augmentOption == 'only' else ''}>Only Augmentations</option>"
-    f"<option value='exclude' {'selected' if augmentOption == 'exclude' else ''}>Only Non-Augmentations</option>"
-    "</select></label><br>"
-  )
-
-  parts.append(f"<label>Equippable Only: <input type='checkbox' name='equippableOnly' {'checked' if equippableOnly else ''}></label><br>")
-
-  parts.append("<fieldset><legend>Flags</legend>")
+  # flags (still checkboxes)
+  flagHtml = []
   for flag in BOOL_FLAG_MAP:
     checked = "checked" if boolFilters.get(flag) == 'true' else ""
-    parts.append(f"<label><input type='checkbox' name='bool_{flag}' {checked}> {flag.title()}</label>")
-  parts.append("</fieldset>")
+    flagHtml.append(f"<label class='gs-check gs-chip'><input type='checkbox' name='bool_{flag}' {checked}><span>{flag.title()}</span></label>")
 
-  parts.append("<label>Sort by: <select name='sort'>")
-  for key in SORTABLE_FIELDS:
-    selected = "selected" if key == sort else ""
-    parts.append(f"<option value='{key}' {selected}>{key}</option>")
-  parts.append("</select></label> ")
+  # numeric attr controls
+  attrRows = []
+  for attr in sorted(NUMERIC_ATTR_MAP.keys()):
+    cmpVal = attrCmp.get(attr, "")
+    numVal = esc(attrVal.get(attr, ""))
+    cmpOptions = "".join(
+      f"<option value='{c}' {'selected' if c == cmpVal else ''}>{c}</option>"
+      for c in ["=", ">=", "<="]
+    )
+    attrRows.append(
+      f"<div class='gs-attr'>"
+      f"  <label class='gs-attr-label' for='attr_{attr}'>{attr}</label>"
+      f"  <select name='cmp_{attr}' class='gs-cmp' aria-label='{attr} comparator'>{cmpOptions}</select>"
+      f"  <input id='attr_{attr}' type='number' name='{attr}' value='{numVal}' class='gs-num'>"
+      f"</div>"
+    )
 
-  parts.append("<label>Order: <select name='sortOrder'>")
-  for order in ["asc", "desc"]:
-    selected = "selected" if order == sortOrder else ""
-    parts.append(f"<option value='{order}' {selected}>{order.title()}</option>")
-  parts.append("</select></label><br>")
+  # Spell selects (shorter)
+  focusSelect = select("focusId", "Focus", focusOptions, selectedFocusIds, size=5)
+  clickSelect = select("clickId", "Click", clickOptions, selectedClickIds, size=5)
+  procSelect  = select("procId",  "Proc",  procOptions,  selectedProcIds,  size=5)
 
-  parts.append(f"<label>Limit: <input type='number' name='limit' value='{esc(limit)}'></label><br>")
-  parts.append("<button type='submit'>Search</button></form>")
+  # Slots / Class / Race (shorter)
+  slotsSelectHtml = select_from_pairs("slots", "Slot(s)", SLOT_OPTIONS, slots, size=5)
+  classPairs = [(c, c) for c in sorted(CLASS_BITMASK.keys())]
+  racesPairs = [(r, r) for r in sorted(RACE_BITMASK.keys())]
+  classSelectHtml = select_from_pairs("class", "Class", classPairs, selectedClasses, size=5)
+  raceSelectHtml  = select_from_pairs("race",  "Race",  racesPairs,  selectedRaces,  size=5)
 
-  return "\n".join(parts)
+  return """
+  <form method='get' action='#gearscout-results' class='gs-form'>
+    <div class='gs-row gs-topbar'>
+      <div class='gs-col name'>
+        <label class='gs-label'>Name</label>
+        <input type='text' name='name' value='""" + esc(nameRaw) + """' placeholder='Item name…'>
+      </div>
+
+      <div class='gs-col sources'>
+        <label class='gs-label'>Item Source</label>
+        <div class='gs-checkgrid gs-chips'>""" + "".join(srcHtml) + """</div>
+      </div>
+
+      <div class='gs-col aug'>
+        <label class='gs-label'>Augmentations</label>
+        <select name='augmentOption'>
+          <option value='both' """ + ("selected" if augmentOption == "both" else "") + """>Both</option>
+          <option value='only' """ + ("selected" if augmentOption == "only" else "") + """>Only Augmentations</option>
+          <option value='exclude' """ + ("selected" if augmentOption == "exclude" else "") + """>Only Non-Augmentations</option>
+        </select>
+        <label class='gs-inline'><input type='checkbox' name='equippableOnly' """ + ("checked" if equippableOnly else "") + """> Equippable Only</label>
+      </div>
+
+      <div class='gs-col sort'>
+        <label class='gs-label'>Sort</label>
+        <div class='gs-inline-row'>
+          <select name='sort'>""" + "".join(
+            f"<option value='{key}' {'selected' if key == sort else ''}>{key}</option>" for key in SORTABLE_FIELDS
+          ) + """</select>
+          <select name='sortOrder'>
+            <option value='asc' """ + ("selected" if sortOrder == "asc" else "") + """>Asc</option>
+            <option value='desc' """ + ("selected" if sortOrder == "desc" else "") + """>Desc</option>
+          </select>
+          <label class='gs-inline'>Limit <input type='number' name='limit' value='""" + esc(limit) + """' class='gs-limit'></label>
+          <button type='submit'>Search</button>
+        </div>
+      </div>
+    </div>
+
+    <fieldset class='gs-fieldset'>
+      <legend>Spell Filters</legend>
+      <div class='gs-selectgrid'>
+        """ + focusSelect + clickSelect + procSelect + """
+      </div>
+    </fieldset>
+
+    <fieldset class='gs-fieldset'>
+      <legend>Slot / Class / Race</legend>
+      <div class='gs-selectgrid'>
+        """ + slotsSelectHtml + classSelectHtml + raceSelectHtml + """
+      </div>
+    </fieldset>
+
+    <div class='gs-row'>
+      <div class='gs-col half'>
+        <fieldset class='gs-fieldset'>
+          <legend>Required Level</legend>
+          <div class='gs-range'>
+            <label>Min <input type='number' name='minLevel' value='""" + esc(minLevel) + """'></label>
+            <span class='dash'>–</span>
+            <label>Max <input type='number' name='maxLevel' value='""" + esc(maxLevel) + """'></label>
+          </div>
+        </fieldset>
+      </div>
+      <div class='gs-col half'>
+        <fieldset class='gs-fieldset'>
+          <legend>Recommended Level</legend>
+          <div class='gs-range'>
+            <label>Min <input type='number' name='minRecLevel' value='""" + esc(minRecLevel) + """'></label>
+            <span class='dash'>–</span>
+            <label>Max <input type='number' name='maxRecLevel' value='""" + esc(maxRecLevel) + """'></label>
+          </div>
+        </fieldset>
+      </div>
+    </div>
+
+    <fieldset class='gs-fieldset'>
+      <legend>Attributes</legend>
+      <div class='gs-attrs-grid'>
+        """ + "".join(attrRows) + """
+      </div>
+    </fieldset>
+
+    <fieldset class='gs-fieldset'>
+      <legend>Flags</legend>
+      <div class='gs-checkgrid gs-chips'>""" + "".join(flagHtml) + """</div>
+    </fieldset>
+  </form>
+  """
 
 def register(app):
   @app.route(URL_PREFIX, methods=["GET"])
   def scout():
     args = request.args
     nameRaw = args.get("name", "")
-    slots = args.getlist("slots")
-
+    slots = args.getlist("slots")               # works for multiselect
     minLevel = _toI(args.get("minLevel"))
     maxLevel = _toI(args.get("maxLevel"))
     minRecLevel = _toI(args.get("minRecLevel"))
     maxRecLevel = _toI(args.get("maxRecLevel"))
 
+    def _ids(key):
+      vals = args.getlist(key)
+      out = []
+      for v in vals:
+        try:
+          out.append(int(v))
+        except (TypeError, ValueError):
+          logger.exception("Exception in blueprints/GearScout.py")
+          pass
+      return out
+
+    selectedFocusIds = _ids("focusId")
+    selectedClickIds = _ids("clickId")
+    selectedProcIds  = _ids("procId")
+
     attrFilters = []
     for attr in NUMERIC_ATTR_MAP:
       cmpOp = args.get(f"cmp_{attr}")
-      val = _toI(args.get(attr))
+      try:
+        val = int(args.get(attr)) if args.get(attr) not in (None, "") else None
+      except ValueError:
+        logger.exception("Exception in blueprints/GearScout.py")
+        val = None
       if cmpOp and val is not None:
         attrFilters.append((attr, cmpOp, val))
 
-    selectedClasses = args.getlist("class")
-    selectedRaces = args.getlist("race")
+    selectedClasses = args.getlist("class")     # works for multiselect
+    selectedRaces   = args.getlist("race")      # works for multiselect
     selectedSources = args.getlist("itemSource") or list(ITEM_SOURCE_OPTIONS.keys())
 
-    augmentOption = args.get("augmentOption", "both")
-    equippableOnly = args.get("equippableOnly") == "on"
+    augmentOption   = args.get("augmentOption", "both")
+    equippableOnly  = args.get("equippableOnly") == "on"
 
     boolFilters = {}
     for flag in BOOL_FLAG_MAP:
@@ -131,12 +250,24 @@ def register(app):
 
     sort = args.get("sort", "name")
     sortOrder = args.get("sortOrder", "asc")
-    limit = _toI(args.get("limit")) or 25
-    currentPage = _toI(args.get("page")) or 1
+    try:
+      limit = int(args.get("limit")) if args.get("limit") else 25
+    except ValueError:
+      logger.exception("Exception in blueprints/GearScout.py")
+      limit = 25
+    try:
+      currentPage = int(args.get("page")) if args.get("page") else 1
+    except ValueError:
+      logger.exception("Exception in blueprints/GearScout.py")
+      currentPage = 1
     offset = (currentPage - 1) * limit
 
     classMask = sum(CLASS_BITMASK.get(c, 0) for c in selectedClasses) if selectedClasses else None
-    raceMask = sum(RACE_BITMASK.get(r, 0) for r in selectedRaces) if selectedRaces else None
+    raceMask  = sum(RACE_BITMASK.get(r, 0) for r in selectedRaces)   if selectedRaces   else None
+
+    focusOptions = get_spell_options_for("focus")
+    clickOptions = get_spell_options_for("click")
+    procOptions  = get_spell_options_for("proc")
 
     result = search_items_filtered(
       nameQuery=nameRaw, slots=slots,
@@ -148,33 +279,46 @@ def register(app):
       augmentOption=augmentOption,
       equippableOnly=equippableOnly,
       itemSourceFilters=selectedSources,
+      focusIds=selectedFocusIds, clickIds=selectedClickIds, procIds=selectedProcIds,
       limit=limit, offset=offset,
       sortField=SORTABLE_FIELDS.get(sort, "i.Name"),
       sortOrder=sortOrder
     )
 
+    # light, useful log
+    logger.info(f"GearScout query name='{nameRaw}' results={result['total']} page={currentPage} limit={limit}")
+
     htmlContent = renderForm(
       nameRaw, slots, minLevel, maxLevel, minRecLevel, maxRecLevel,
       attrFilters, sort, sortOrder, limit,
       selectedClasses, selectedRaces, augmentOption, selectedSources,
-      equippableOnly, boolFilters
+      equippableOnly, boolFilters,
+      focusOptions, clickOptions, procOptions,
+      selectedFocusIds, selectedClickIds, selectedProcIds
     )
 
-    htmlContent += f"<h2>Results ({result['total']})</h2><ul id='results'>"
+    htmlContent += f"<h2>Results ({result['total']})</h2><ul id='gearscout-results'>"
     for item in result["items"]:
       icons = []
       if item.get('lootdropEntries'):
-        icons.append('<span title="Drop">🗡️</span>')
+        icons.append('<span data-source="drops" role="button" tabindex="0" title="Drops">🗡️</span>')
       if item.get('merchantListEntries'):
-        icons.append('<span title="Merchant">🛒</span>')
+        icons.append('<span data-source="merchants" role="button" tabindex="0" title="Merchants">🛒</span>')
       if item.get('tradeskillRecipeEntries'):
-        icons.append('<span title="Tradeskill">⚒️</span>')
+        icons.append('<span data-source="recipes" role="button" tabindex="0" title="Recipes">⚒️</span>')
       if item.get('questEntries'):
         icons.append('<span title="Quest">📜</span>')
       if item.get('unobtainable'):
-        icons.append('<span title="Unobtainable">❌</span>')
-
+        icons.append('<span title="Unobtainable">❌</span>') # If everything works, this should never appear
       iconDisplay = " ".join(icons)
+
+      spellBits = []
+      if item.get('focusname'):
+        spellBits.append(f"Focus: {html.escape(item['focusname'])}")
+      if item.get('procname'):
+        spellBits.append(f"Proc: {html.escape(item['procname'])}")
+      if item.get('clickname'):
+        spellBits.append(f"Click: {html.escape(item['clickname'])}")
 
       statSummary = ""
       if attrFilters:
@@ -186,6 +330,9 @@ def register(app):
             filteredStats.append(f"{attr}: {sign}{val}")
         if filteredStats:
           statSummary = f" <small>({' ,'.join(filteredStats)})</small>"
+
+      if spellBits:
+        statSummary = (statSummary or "") + f" <small>[{' | '.join(spellBits)}]</small>"
 
       htmlContent += (
         f"<li class='result-item' data-itemid='{item['id']}'>"
@@ -200,240 +347,13 @@ def register(app):
         "</li>"
       )
     htmlContent += "</ul>"
-    htmlContent += r"""
-      <script>
-        function formatRespawnTime(seconds) {
-          const days = Math.floor(seconds / 86400);
-          seconds %= 86400;
-          const hours = Math.floor(seconds / 3600);
-          seconds %= 3600;
-          const minutes = Math.floor(seconds / 60);
-          seconds = seconds % 60;
 
-          const parts = [];
-          if (days > 0) parts.push(`${days}d`);
-          if (hours > 0) parts.push(`${hours}h`);
-          if (minutes > 0) parts.push(`${minutes}m`);
-          if (seconds > 0) parts.push(`${seconds}s`);
-
-          return parts.join(' ') || '0s';
-        }
-
-        function formatPrice(cp) {
-          const pp = Math.floor(cp / 1000);
-          cp %= 1000;
-          const gp = Math.floor(cp / 100);
-          cp %= 100;
-          const sp = Math.floor(cp / 10);
-          const cpLeft = cp % 10;
-
-          const parts = [];
-          if (pp) parts.push(`${pp}p`);
-          if (gp) parts.push(`${gp}g`);
-          if (sp) parts.push(`${sp}s`);
-          if (cpLeft || parts.length === 0) parts.push(`${cpLeft}c`);
-
-          return parts.join(' ');
-        }
-
-        function renderDrops(drops) {
-          if (!drops.length) return '';
-
-          const zonesGrouped = {};
-
-          for (const drop of drops) {
-            const npc = drop.npc || {};
-            const zones = drop.zones || {};
-
-            for (const [zoneShort, zoneData] of Object.entries(zones)) {
-              const zoneKey = `${zoneData.zone_longname} (${zoneShort})`;
-              if (!zonesGrouped[zoneKey]) zonesGrouped[zoneKey] = [];
-
-              zonesGrouped[zoneKey].push({
-                name: npc.name || 'Unknown',
-                lastname: npc.lastname || '',
-                level: npc.maxlevel && npc.maxlevel !== npc.level
-                  ? `${npc.level} - ${npc.maxlevel}`
-                  : `${npc.level ?? '??'}`,
-                chance: drop.effective_chance ?? '?',
-                spawnpoints: zoneData.spawnpoints || []
-              });
-            }
-          }
-
-          return Object.entries(zonesGrouped).map(([zone, npcList]) => {
-            return `
-              <div class="drop-zone-block">
-                <strong>${zone}</strong>
-                <ul class="drop-npc-list">
-                  ${npcList.map(npc => `
-                    <li>
-                      <b>${npc.name} ${npc.lastname}</b> (Lvl ${npc.level}, ${npc.chance}%)
-                      <ul class="spawnpoint-list">
-                        ${npc.spawnpoints.map(sp => {
-                          const tooltip = sp.placeholders?.length
-                            ? ` title="Placeholders: ${sp.placeholders.replace(/"/g, '&quot;')}"`
-                            : '';
-                          const chance = sp.chance != null ? ` (${sp.chance}%)` : '';
-                          return `<li${tooltip}>(${sp.y}, ${sp.x}, ${sp.z}) – ${formatRespawnTime(sp.respawntime)}${chance}</li>`;
-                        }).join('')}
-                      </ul>
-                    </li>
-                  `).join('')}
-                </ul>
-              </div>
-            `;
-          }).join('');
-        }
-
-        function renderMerchants(merchants) {
-          if (!merchants.length) return '';
-
-          const byZone = {};
-
-          for (const m of merchants) {
-            const zone = m.zone_longname || m.zone_shortname || 'Unknown Zone';
-            if (!byZone[zone]) byZone[zone] = [];
-            byZone[zone].push(m);
-          }
-
-          return Object.entries(byZone).map(([zone, list]) => {
-            return `
-              <div class="merchant-zone-block">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <strong>${zone}</strong>
-                </div>
-                <ul class="merchant-list">
-                  ${list.map(m => {
-                    const coords = (m.x != null && m.y != null)
-                      ? ` (${m.y}, ${m.x}${m.z != null ? `, ${m.z}` : ''})`
-                      : '';
-                    const chance = (m.chance != null && m.chance < 100) ? ` (${m.chance}% chance)` : '';
-                    return `<li><b>${m.Name || 'Unknown Merchant'}</b>${coords}${chance}</li>`;
-                  }).join('')}
-                </ul>
-              </div>
-            `;
-          }).join('');
-        }
-
-        function renderRecipes(recipes) {
-          if (!recipes.length) return '';
-
-          // Group recipes by name
-          const grouped = {};
-          for (const recipe of recipes) {
-            if (!grouped[recipe.name]) {
-              grouped[recipe.name] = [];
-            }
-            grouped[recipe.name].push(recipe);
-          }
-
-          return Object.entries(grouped).map(([name, variants]) => {
-            return `
-              <div class="recipe-block">
-                <h4 class="recipe-title">${name}</h4>
-                <div class="recipe-section">
-                  ${variants.map(variant => {
-                    const list = (label, items, countField = 'componentCount') => {
-                      if (!items?.length) return '';
-                      return `
-                        <div class="recipe-subsection">
-                          <b>${label}:</b>
-                          <ul class="recipe-list">
-                            ${items.map(i => `
-                              <li>${i[countField]} x 
-                                <span class="eqtooltip" data-type="item" data-id="${i.id}">${i.name}</span>
-                              </li>`).join('')}
-                          </ul>
-                        </div>`;
-                    };
-
-                    const failItems = variant.ingredients?.filter(i => i.failCount > 0);
-                    const successReturn = variant.ingredients?.filter(i => i.successCount > 0 && i.componentCount > 0);
-                    const outputs = variant.outputs?.filter(i => i.successCount > 0 && i.componentCount === 0);
-
-                    return `
-                      <div class="recipe-variant">
-                        <div class="recipe-variant-meta">
-                          <span class="tradeskill-name">${variant.tradeskill_name}</span>
-                          <span class="skill-needed">Min: ${variant.skillNeeded}</span>
-                          <span class="trivial">Trivial: ${variant.trivial}</span>
-                        </div>
-                        <div class="recipe-columns">
-                          <div class="recipe-left-column">
-                            ${list("Ingredients", variant.ingredients)}
-                            ${list("Makes", outputs, "successCount")}
-                          </div>
-                          <div class="recipe-right-column">
-                            ${list("Returned on Failure", failItems, "failCount")}
-                            ${list("Returned on Success", successReturn, "successCount")}
-                          </div>
-                        </div>
-                      </div>`;
-                  }).join('')}
-                </div>
-              </div>`;
-          }).join('');
-        }
-
-        function bindResultItemClicks() {
-          document.querySelectorAll('.result-item').forEach(itemElement => {
-            itemElement.addEventListener('click', async () => {
-              const detailsBox = itemElement.querySelector('.result-details');
-              if (!detailsBox.style.display || detailsBox.style.display === 'none') {
-                const itemId = itemElement.getAttribute('data-itemid');
-                const [dropsRes, merchantsRes, recipesRes] = await Promise.all([
-                  fetch(`/api/item/${itemId}/drops`),
-                  fetch(`/api/item/${itemId}/merchants`),
-                  fetch(`/api/item/${itemId}/recipes`)
-                ]);
-
-                const drops = await dropsRes.json();
-                const merchants = await merchantsRes.json();
-                const recipes = await recipesRes.json();
-
-                const parts = [];
-
-                if (drops.length) {
-                  parts.push(`<div class="source-header"><h3>Drops</h3></div>`);
-                  parts.push(renderDrops(drops));
-                }
-
-                if (merchants.length) {
-                  const merchantPrice = merchants?.[0]?.price != null ? formatPrice(merchants[0].price) : null;
-                  parts.push(`
-                    <div class="source-header">
-                      <h3>Merchants</h3>
-                      ${merchantPrice ? `<span class="merchant-price">${merchantPrice}</span>` : ''}
-                    </div>
-                  `);
-                  parts.push(renderMerchants(merchants, true));
-                }
-
-                if (recipes.length) {
-                  parts.push(`<div class="source-header"><h3>Tradeskill Recipes</h3></div>`);
-                  parts.push(renderRecipes(recipes));
-                }
-
-                detailsBox.innerHTML = parts.join('');
-                detailsBox.style.display = 'block';
-              } else {
-                detailsBox.style.display = 'none';
-              }
-            });
-          });
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-          bindResultItemClicks();
-        });
-      </script>
-    """
+    # ES module (deferred by default)
+    script_src = url_for('static', filename='js/gearscout.js')
+    htmlContent += f"<script type='module' src='{script_src}'></script>"
 
     totalResults = result['total']
     totalPages = (totalResults + limit - 1) // limit
-
     if totalPages > 1:
       from web.utils import renderPagination
       queryParams = request.args.to_dict(flat=False)
