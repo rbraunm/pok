@@ -43,7 +43,7 @@ def getDb():
         database=cfg["db"],
         cursorclass=pymysql.cursors.DictCursor,
         charset="utf8mb4",
-        autocommit=False,
+        autocommit=True,
       )
       _apply_session_tuning(conn)
       return conn

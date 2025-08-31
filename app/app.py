@@ -1,4 +1,4 @@
-APP_VERSION = "0.6.4045"
+APP_VERSION = "0.6.4048"
 
 import html
 import json

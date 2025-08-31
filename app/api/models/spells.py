@@ -443,7 +443,7 @@ def get_spells_for_character(charId: int) -> List[Dict[str, Any]]:
 
   sql = f"""
     SELECT {SPELL_TABLE_SELECT_FIELDS},
-      s.classes12 AS required_level,
+      s.{classColumn} AS required_level,
       CASE WHEN cs.id IS NOT NULL THEN 1 ELSE 0 END AS known,
       pis.lootdropEntries,
       pis.merchantListEntries,

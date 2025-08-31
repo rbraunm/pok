@@ -391,6 +391,7 @@ def search_items_filtered(
       fs.name AS focusname,
       cs.name AS clickname,
       ps.name AS procname,
+      bs.name AS bardeffectname,
       pis.*,
       CASE
         WHEN pis.item_id IS NULL
@@ -403,6 +404,7 @@ def search_items_filtered(
     LEFT JOIN spells_new fs ON i.focuseffect = fs.id
     LEFT JOIN spells_new cs ON i.clickeffect = cs.id
     LEFT JOIN spells_new ps ON i.proceffect  = ps.id
+    LEFT JOIN spells_new bs ON i.proceffect  = bs.id
     WHERE {whereClause}
     ORDER BY {sortField} {sortOrder}
     LIMIT %s OFFSET %s

@@ -11,7 +11,7 @@ from api.models.spells import get_spell
 from api.models.tradeskill import get_item_recipes
 
 # --- Renderers (HTML) ---
-from api.renderers.items import render_item_header            # new, header-only
+from api.renderers.items import render_item_header
 from api.renderers.npcs import render_item_drops, render_item_merchants
 from api.renderers.tradeskill import render_recipe_list
 
