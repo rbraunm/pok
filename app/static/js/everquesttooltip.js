@@ -237,17 +237,12 @@ function renderItem(D){
     const html = spellRef(D.clickeffect, cname);
     push(`<div class="section"><span class="label">Click:</span> ${html}</div>`);
   }
-
   // Bard Instrument
-  if (D.bardeffect && D.bardeffect !== -1) {
-    const bname =
-      (D.bardeffectname && String(D.bardeffectname).trim()) ||
-      (D['bardeffectname'] && String(D['bardeffectname']).trim()) ||
-      null;
-    if (!bname) logMissingSpellName('bard', D.bardeffect, D);
-    const html = spellRef(D.bardeffect, bname);
+  if (D.bardeffect && D.bardeffect !== -1 && D.bardspellname) {
+    const html = spellRef(D.bardeffect, D.bardspellname);
     push(`<div class="section"><span class="label">Bard:</span> ${html}</div>`);
   }
+
 
   if(has(D.weight)||has(D.size)){ push(`<div class="section">WT: ${D.weight?(D.weight/10).toFixed(1):''} Size: ${formatSize(D.size)}</div>`); }
 

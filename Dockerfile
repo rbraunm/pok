@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.7
 FROM python:3.13-slim
 
-# tzdata so ZoneInfo('America/Phoenix') works; ca-certs for HTTPS
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tzdata ca-certificates \
  && rm -rf /var/lib/apt/lists/*

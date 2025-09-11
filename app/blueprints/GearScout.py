@@ -29,7 +29,7 @@ def renderForm(nameRaw, slots, minLevel, maxLevel, minRecLevel, maxRecLevel, att
                sort, sortOrder, limit, selectedClasses, selectedRaces, augmentOption, selectedSources,
                equippableOnly, boolFilters,
                focusOptions, clickOptions, procOptions,
-               selectedFocusIds, selectedClickIds, selectedProcIds):
+               selectedFocusIds, selectedClickIds, selectedProcIds, bardOptions, selectedBardIds):
   esc = lambda x: html.escape(str(x) if x is not None else "")
 
   def select(name, label, options, selectedIds, size=5):
@@ -93,7 +93,7 @@ def renderForm(nameRaw, slots, minLevel, maxLevel, minRecLevel, maxRecLevel, att
       f"<div class='gs-attr'>"
       f"  <label class='gs-attr-label' for='attr_{attr}'>{attr}</label>"
       f"  <select name='cmp_{attr}' class='gs-cmp' aria-label='{attr} comparator'>{cmpOptions}</select>"
-      f"  <input id='attr_{attr}' type='number' name='{attr}' value='{numVal}' class='gs-num'>"
+      f"  <input id='attr_{attr}' type='number' name='{attr}' value='{numVal}' class='gs-num" + (" gs-dec" if attr == 'ratio' else "") + f"'" + (" step='any'" if attr == 'ratio' else "") + ">"
       f"</div>"
     )
 
@@ -101,6 +101,7 @@ def renderForm(nameRaw, slots, minLevel, maxLevel, minRecLevel, maxRecLevel, att
   focusSelect = select("focusId", "Focus", focusOptions, selectedFocusIds, size=5)
   clickSelect = select("clickId", "Click", clickOptions, selectedClickIds, size=5)
   procSelect  = select("procId",  "Proc",  procOptions,  selectedProcIds,  size=5)
+  bardSelect  = select("bardId",  "Bard",  bardOptions,  selectedBardIds, size=5)
 
   # Slots / Class / Race (shorter)
   slotsSelectHtml = select_from_pairs("slots", "Slot(s)", SLOT_OPTIONS, slots, size=5)
@@ -151,7 +152,7 @@ def renderForm(nameRaw, slots, minLevel, maxLevel, minRecLevel, maxRecLevel, att
     <fieldset class='gs-fieldset'>
       <legend>Spell Filters</legend>
       <div class='gs-selectgrid'>
-        """ + focusSelect + clickSelect + procSelect + """
+        """ + focusSelect + clickSelect + procSelect + bardSelect + """
       </div>
     </fieldset>
 
@@ -224,12 +225,13 @@ def register(app):
     selectedFocusIds = _ids("focusId")
     selectedClickIds = _ids("clickId")
     selectedProcIds  = _ids("procId")
+    selectedBardIds = _ids("bardId")
 
     attrFilters = []
     for attr in NUMERIC_ATTR_MAP:
       cmpOp = args.get(f"cmp_{attr}")
       try:
-        val = int(args.get(attr)) if args.get(attr) not in (None, "") else None
+        val = (float(args.get(attr)) if attr == 'ratio' else int(args.get(attr))) if args.get(attr) not in (None, "") else None
       except ValueError:
         logger.exception("Exception in blueprints/GearScout.py")
         val = None
@@ -268,6 +270,7 @@ def register(app):
     focusOptions = get_spell_options_for("focus")
     clickOptions = get_spell_options_for("click")
     procOptions  = get_spell_options_for("proc")
+    bardOptions  = get_spell_options_for("bard")
 
     result = search_items_filtered(
       nameQuery=nameRaw, slots=slots,
@@ -279,7 +282,7 @@ def register(app):
       augmentOption=augmentOption,
       equippableOnly=equippableOnly,
       itemSourceFilters=selectedSources,
-      focusIds=selectedFocusIds, clickIds=selectedClickIds, procIds=selectedProcIds,
+      focusIds=selectedFocusIds, clickIds=selectedClickIds, procIds=selectedProcIds, bardIds=selectedBardIds,
       limit=limit, offset=offset,
       sortField=SORTABLE_FIELDS.get(sort, "i.Name"),
       sortOrder=sortOrder
@@ -294,7 +297,7 @@ def register(app):
       selectedClasses, selectedRaces, augmentOption, selectedSources,
       equippableOnly, boolFilters,
       focusOptions, clickOptions, procOptions,
-      selectedFocusIds, selectedClickIds, selectedProcIds
+      selectedFocusIds, selectedClickIds, selectedProcIds, bardOptions, selectedBardIds
     )
 
     htmlContent += f"<h2>Results ({result['total']})</h2><ul id='gearscout-results'>"
@@ -319,6 +322,8 @@ def register(app):
         spellBits.append(f"Proc: {html.escape(item['procname'])}")
       if item.get('clickname'):
         spellBits.append(f"Click: {html.escape(item['clickname'])}")
+      if item.get('bardspellname'):
+        spellBits.append(f"Bard: {html.escape(item['bardspellname'])}")
 
       statSummary = ""
       if attrFilters:

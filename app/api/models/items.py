@@ -27,6 +27,7 @@ NUMERIC_ATTR_MAP: Dict[str, str] = {
   "cr": "i.cr",
   "dr": "i.dr",
   "pr": "i.pr",
+  "ratio": "(i.damage / NULLIF(i.delay, 0))"
 }
 
 # ToDo: add new item sources:
@@ -253,6 +254,7 @@ ITEM_TABLE_SELECT_FIELDS = """
       i.subtype,
       i.heirloom,
       i.placeable,
+      ROUND(i.damage / NULLIF(i.delay, 0), 4) AS ratio,
       i.epicitem"""
 
 class ItemNotFoundError(Exception):
@@ -262,7 +264,7 @@ def decodeBitmask(value, mapping):
   return [name for name, mask in mapping.items() if value & mask] if value else []
 
 def get_spell_options_for(kind: str) -> List[Dict[str, Any]]:
-  col_map = {"focus": "focuseffect", "click": "clickeffect", "proc": "proceffect"}
+  col_map = {"focus": "focuseffect", "click": "clickeffect", "proc": "proceffect", "bard": "bardeffect"}
   col = col_map.get(kind)
   if not col:
     return []
@@ -295,11 +297,12 @@ def search_items_filtered(
   maxLevel: int | None = None,
   minRecLevel: int | None = None,
   maxRecLevel: int | None = None,
-  attrFilters: List[Tuple[str, str, int]] | None = None,
+  attrFilters: List[Tuple[str, str, float]] | None = None,
   boolFilters: Dict[str, str] | None = None,
   augmentOption: str = "both",
   equippableOnly: bool = False,
   itemSourceFilters: List[str] | None = None,
+  bardIds: List[int] | None = None,
   focusIds: List[int] | None = None,
   clickIds: List[int] | None = None,
   procIds:  List[int] | None = None,
@@ -382,6 +385,7 @@ def search_items_filtered(
   add_in_list("focuseffect", focusIds)
   add_in_list("clickeffect", clickIds)
   add_in_list("proceffect",  procIds)
+  add_in_list("bardeffect",  bardIds)
 
   whereClause = " AND ".join(where) if where else "1=1"
 
@@ -391,7 +395,7 @@ def search_items_filtered(
       fs.name AS focusname,
       cs.name AS clickname,
       ps.name AS procname,
-      bs.name AS bardeffectname,
+      bs.name AS bardspellname,
       pis.*,
       CASE
         WHEN pis.item_id IS NULL
@@ -404,7 +408,7 @@ def search_items_filtered(
     LEFT JOIN spells_new fs ON i.focuseffect = fs.id
     LEFT JOIN spells_new cs ON i.clickeffect = cs.id
     LEFT JOIN spells_new ps ON i.proceffect  = ps.id
-    LEFT JOIN spells_new bs ON i.proceffect  = bs.id
+    LEFT JOIN spells_new bs ON i.bardeffect  = bs.id
     WHERE {whereClause}
     ORDER BY {sortField} {sortOrder}
     LIMIT %s OFFSET %s
@@ -435,6 +439,7 @@ def get_item(itemId: int) -> Dict[str, Any]:
         fs.name as focusname,
         cs.name as clickname,
         ps.name as procname,
+      bs.name as bardspellname,
         pis.*,
         CASE
           WHEN pis.lootdropEntries IS NULL AND 
@@ -448,6 +453,7 @@ def get_item(itemId: int) -> Dict[str, Any]:
       LEFT JOIN spells_new fs ON i.focuseffect = fs.id
       LEFT JOIN spells_new cs ON i.clickeffect = cs.id
       LEFT JOIN spells_new ps ON i.proceffect = ps.id
+      LEFT JOIN spells_new bs ON i.bardeffect = bs.id
       WHERE i.id = %s
     """, (itemId,))
     item = cur.fetchone()
