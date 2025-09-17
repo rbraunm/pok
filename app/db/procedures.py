@@ -1,18 +1,14 @@
+import sys
 import re
 from db import DB_PREFIX
 from applogging import get_logger
+
 logger = get_logger(__name__)
 
-PROCEDURE_PREFIX = f"{DB_PREFIX}"
-_VALID_IDENT = re.compile(r"^[A-Za-z0-9_]+$")
-
-def _procedureDefs():
-  procs = []
-  tableName = f"{DB_PREFIX}_item_sources"
-
-  procs.append((
-    "populate_item_sources",
-    f"""
+PROCEDURE_SQL = [
+  f"""
+CREATE PROCEDURE {DB_PREFIX}_populate_item_sources()
+BEGIN
   DECLARE currentExpansion INT;
 
   -- Get current expansion
@@ -21,10 +17,10 @@ def _procedureDefs():
   WHERE rule_name = 'Expansion:CurrentExpansion';
 
   -- Clear the existing table
-  TRUNCATE TABLE {tableName};
+  TRUNCATE TABLE {DB_PREFIX}_item_sources;
 
   -- Insert lootdropEntries
-  INSERT INTO {tableName} (item_id, lootdropEntries)
+  INSERT INTO {DB_PREFIX}_item_sources (item_id, lootdropEntries)
   SELECT
     i.id AS item_id,
     GROUP_CONCAT(DISTINCT lde.lootdrop_id ORDER BY lde.lootdrop_id) AS lootdropEntries
@@ -48,7 +44,7 @@ def _procedureDefs():
   ON DUPLICATE KEY UPDATE lootdropEntries = VALUES(lootdropEntries);
 
   -- Insert merchantListEntries
-  INSERT INTO {tableName} (item_id, merchantListEntries)
+  INSERT INTO {DB_PREFIX}_item_sources (item_id, merchantListEntries)
   SELECT
     ml.item AS item_id,
     GROUP_CONCAT(DISTINCT ml.merchantid ORDER BY ml.merchantid) AS merchantListEntries
@@ -71,7 +67,7 @@ def _procedureDefs():
   ON DUPLICATE KEY UPDATE merchantListEntries = VALUES(merchantListEntries);
 
   -- Insert tradeskillRecipeEntries
-  INSERT INTO {tableName} (item_id, tradeskillRecipeEntries)
+  INSERT INTO {DB_PREFIX}_item_sources (item_id, tradeskillRecipeEntries)
   SELECT
     tre.item_id,
     GROUP_CONCAT(DISTINCT tre.recipe_id ORDER BY tre.recipe_id) AS tradeskillRecipeEntries
@@ -84,108 +80,80 @@ def _procedureDefs():
   GROUP BY tre.item_id
   ON DUPLICATE KEY UPDATE tradeskillRecipeEntries = VALUES(tradeskillRecipeEntries);
 
-  -- Placeholder for questEntries
-  -- Implement when quest logic is defined
-"""
-  ))
-  return procs
+  -- Placeholder for questEntries (to be implemented later)
+END
+""",
+]
 
-def dropProcedures(db):
-  logger.info("Checking procedures...")
-  likePattern = f"{DB_PREFIX}_%"
-  with db.cursor() as cur:
-    cur.execute("""
-      SELECT ROUTINE_NAME
-      FROM information_schema.routines
-      WHERE routine_type = 'PROCEDURE'
-        AND ROUTINE_NAME LIKE %s
-    """, (likePattern),)
-    rows = cur.fetchall()
-    names = [r["ROUTINE_NAME"] if isinstance(r, dict) else r[0] for r in rows]
-
-    for name in names:
-      try:
-        cur.execute(f"DROP PROCEDURE IF EXISTS {name}")
-        logger.info(f"Dropped `{name}`")
-      except Exception as e:
-        logger.exception("Exception in db/procedures.py")
-        logger.exception(f"FAILED to drop `{name}`: {e}")
-
-def createProcedures(db):
-  logger.info("Creating procedures...")
-  defs = _procedureDefs()
-  with db.cursor() as cur:
-    for baseName, body in defs:
-      procName = f"{PROCEDURE_PREFIX}_{baseName}"
-      try:
-        cur.execute(f"CREATE PROCEDURE {procName}() BEGIN\n{body}\nEND")
-        logger.info(f"Created procedure `{procName}`")
-      except Exception as e:
-        logger.exception("Exception in db/procedures.py")
-        logger.exception(f"FAILED to create procedure `{procName}`: {e}")
-  db.commit()
+def _drop_prefixed_procedures(cur):
+  cur.execute("""
+    SELECT ROUTINE_NAME
+    FROM information_schema.routines
+    WHERE ROUTINE_SCHEMA = DATABASE()
+      AND ROUTINE_TYPE = 'PROCEDURE'
+      AND LEFT(ROUTINE_NAME, CHAR_LENGTH(CONCAT(%s, '_'))) = CONCAT(%s, '_')
+  """, (DB_PREFIX, DB_PREFIX))
+  for r in cur.fetchall() or []:
+    name = r["ROUTINE_NAME"] if isinstance(r, dict) else r[0]
+    cur.execute(f"DROP PROCEDURE IF EXISTS `{name}`")
+    logger.info(f"Dropped procedure `{name}`")
 
 def initializeProcedures(db):
-  dropProcedures(db)
-  createProcedures(db)
+  logger.info("Initializing procedures...")
+  created = 0
+  with db.cursor() as cur:
+    cur.execute(
+      """
+      SELECT COUNT(*) AS cnt
+      FROM information_schema.routines
+      WHERE ROUTINE_SCHEMA = DATABASE()
+        AND ROUTINE_TYPE = 'PROCEDURE'
+        AND LEFT(ROUTINE_NAME, CHAR_LENGTH(CONCAT(%s, '_'))) = CONCAT(%s, '_')
+      """,
+      (DB_PREFIX, DB_PREFIX)
+    )
+    row = cur.fetchone() or {}
+    to_drop = int((row["cnt"] if isinstance(row, dict) else row[0]) or 0)
 
-def _normalizeProcName(name: str) -> str:
-  if not name:
-    raise ValueError("procedureName is required")
-  if "." in name or "`" in name:
-    raise ValueError("Cross-schema or quoted procedure names are not allowed")
+    _drop_prefixed_procedures(cur)
 
-  if name.startswith(PROCEDURE_PREFIX):
-    base = name[len(PROCEDURE_PREFIX):]
-    if not _VALID_IDENT.match(base):
-      raise ValueError(f"Invalid procedure name: {name!r}")
-    return name
+    for sql in PROCEDURE_SQL:
+      m = re.search(r'CREATE\s+PROCEDURE\s+`?([A-Za-z0-9_]+)`?', sql, re.IGNORECASE)
+      name = m.group(1) if m else None
+      cur.execute(sql)
+      created += 1
+      logger.info(f"Created procedure `{name}`" if name else "Created procedure")
 
-  if not _VALID_IDENT.match(name):
-    raise ValueError(f"Invalid procedure name: {name!r}")
-  return f"{PROCEDURE_PREFIX}_{name}"
-
+  db.commit()
+  logger.info(f"Procedures init complete: dropped={to_drop}, created={created}.")
 
 def callStoredProcedure(db, procedureName, args=None, returnAll=False):
-  """
-  Call a stored procedure that belongs to this app (enforced by DB_PREFIX).
-  - procedureName: 'base' (e.g. 'populate_item_sources') or full (e.g. 'pok_populate_item_sources')
-  - If the procedure emits result set(s), return the first by default, or all if returnAll=True.
-  - If no result sets are produced, return None.
-  """
-  fullName = _normalizeProcName(procedureName)
+  if not procedureName:
+    raise ValueError("procedureName is required")
   logger.info(f"Calling stored procedure `{procedureName}`")
   args = tuple(args or ())
   placeholders = ", ".join(["%s"] * len(args))
-  sql = f"CALL {fullName}({placeholders})" if placeholders else f"CALL {fullName}()"
-
+  sql = f"CALL {procedureName}({placeholders})" if placeholders else f"CALL {procedureName}()"
   results = []
   with db.cursor() as cur:
     cur.execute(sql, args)
-
-    # First result set (if any)
     try:
       rows = cur.fetchall()
       if rows:
         results.append(rows)
     except Exception:
-      logger.exception("Exception in db/procedures.py")
-      pass
-
-    # Additional result sets (if any)
+      logger.exception("Exception reading first result set")
     while hasattr(cur, "nextset") and cur.nextset():
       try:
         rows = cur.fetchall()
         if rows:
           results.append(rows)
       except Exception:
-        logger.exception("Exception in db/procedures.py")
-        pass
-
+        logger.exception("Exception reading additional result set")
   db.commit()
-
   if not results:
     return None
   if returnAll or len(results) > 1:
     return results
   return results[0]
+

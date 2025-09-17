@@ -72,30 +72,23 @@ def getDb():
       raise
 
 def initializeDbObjects():
-  logger.info("Creating database resources...")
+  logger.info("Initializing database objects...")
   db = getDb()
-  with db.cursor() as cur:
-    logger.info("Creating item sources table if it does not exist...")
-    table_name = f"{DB_PREFIX}_item_sources"
-    cur.execute(f"""
-      CREATE TABLE IF NOT EXISTS {table_name} (
-        item_id INT PRIMARY KEY,
-        lootdropEntries TEXT,
-        merchantListEntries TEXT,
-        tradeskillRecipeEntries TEXT,
-        questEntries TEXT
-      )
-    """)
 
-  from db.indexes import initializeIndexes
-  initializeIndexes(db)
-  
+  from db.tables import initializeTables
+  from db.functions import initializeFunctions
   from db.views import initializeViews
-  initializeViews(db)
-
+  from db.indexes import initializeIndexes
   from db.procedures import initializeProcedures, callStoredProcedure
+
+  # Build everything in dependency-safe order
+  initializeTables(db)
+  initializeFunctions(db)
+  initializeViews(db)
+  initializeIndexes(db)
   initializeProcedures(db)
 
+  # Populate derived data
   callStoredProcedure(db, f"{DB_PREFIX}_populate_item_sources")
 
   db.commit()
