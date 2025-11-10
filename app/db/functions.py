@@ -1,196 +1,100 @@
-import sys
-import re
 from applogging import get_logger
 from db import DB_PREFIX
+import os
+import glob
+import re
 
 logger = get_logger(__name__)
 
-FUNCTION_SQL = [
-  f"""
-CREATE FUNCTION {DB_PREFIX}_parse_npc_abilities(sa TEXT, p_category VARCHAR(16))
-RETURNS TEXT
-DETERMINISTIC
-READS SQL DATA
-BEGIN
-  DECLARE s TEXT;
-  DECLARE token TEXT;
-  DECLARE id_text TEXT;
-  DECLARE ability_id INT;
-  DECLARE result TEXT DEFAULT NULL;
-  DECLARE seen_ids TEXT DEFAULT '';
-  DECLARE delim_pos INT;
-  DECLARE caret_pos INT;
-  DECLARE ability_name VARCHAR(64);
-  DECLARE matched INT;
-  DECLARE loop_guard INT DEFAULT 0;
-  DECLARE v_category VARCHAR(16);
+HERE = os.path.dirname(os.path.abspath(__file__))
+FUNCTIONS_SQL_DIR = os.path.join(HERE, "functions")
 
-  -- Normalize category
-  SET v_category = TRIM(IFNULL(p_category, ''));
+_HDR_RE = re.compile(r"CREATE\s+FUNCTION\s+`?([A-Za-z0-9_]+)`?", flags=re.IGNORECASE)
+_CREATE_RE = re.compile(r"(CREATE\s+FUNCTION\s+)`?[A-Za-z0-9_]+`?", flags=re.IGNORECASE)
 
-  IF v_category <> '' AND v_category NOT IN ('offense','defense','behavior','immunity') THEN
-    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid category';
-  END IF;
 
-  -- Null/blank input => no abilities
-  IF sa IS NULL OR TRIM(sa) = '' OR UPPER(TRIM(sa)) = 'NULL' THEN
-    RETURN NULL;
-  END IF;
+def _prefixed(name: str) -> str:
+  pref = f"pok_"
+  return name if name.startswith(pref) else f"{pref}{name}"
 
-  SET s = sa;
 
-  parse_loop: LOOP
-    SET loop_guard = loop_guard + 1;
-    IF loop_guard > 512 THEN LEAVE parse_loop; END IF;
+def _rename_to_prefixed(sql: str, orig_name: str) -> str:
+  # Replace only the first function name in the CREATE header (case-insensitive)
+  return _CREATE_RE.sub(lambda m: f"{m.group(1)}`{_prefixed(orig_name)}`", sql, count=1)
 
-    -- Split on ^
-    SET caret_pos = LOCATE('^', s);
-    IF caret_pos > 0 THEN
-      SET token = TRIM(SUBSTRING(s, 1, caret_pos - 1));
-      SET s     = SUBSTRING(s, caret_pos + 1);
-    ELSE
-      SET token = TRIM(s);
-      SET s     = '';
-    END IF;
 
-    IF token = '' THEN
-      IF s = '' THEN LEAVE parse_loop; ELSE ITERATE parse_loop; END IF;
-    END IF;
+def _iter_sql_files():
+  return sorted(glob.glob(os.path.join(FUNCTIONS_SQL_DIR, "*.sql")))
 
-    -- Take numeric id before first comma (e.g., '21,1' -> 21)
-    SET delim_pos = LOCATE(',', token);
-    SET id_text   = TRIM(IF(delim_pos > 0, SUBSTRING(token, 1, delim_pos - 1), token));
 
-    IF id_text REGEXP '^[0-9]+$' THEN
-      SET ability_id = CAST(id_text AS UNSIGNED);
-
-      -- Only process once per ability id
-      IF ability_id > 0 AND FIND_IN_SET(ability_id, seen_ids) = 0 THEN
-        -- Reset before SELECT; otherwise stale values cause duplicates
-        SET ability_name = NULL;
-
-        SELECT display_name
-          INTO ability_name
-        FROM {DB_PREFIX}_eqemu_special_abilities
-        WHERE id = ability_id
-          AND (v_category = '' OR category = v_category)
-        LIMIT 1;
-
-        SET matched = ROW_COUNT();
-
-        IF matched > 0 AND ability_name IS NOT NULL THEN
-          SET seen_ids = IF(seen_ids = '', id_text, CONCAT(seen_ids, ',', id_text));
-          SET result   = IFNULL(result, '');
-          SET result   = IF(result = '', ability_name, CONCAT(result, ', ', ability_name));
-        END IF;
-      END IF;
-    END IF;
-
-    IF s = '' THEN LEAVE parse_loop; END IF;
-  END LOOP;
-
-  RETURN result;
-END
-""",
-  f"""
-CREATE FUNCTION {DB_PREFIX}_parse_faction_value(p_value INT)
-RETURNS VARCHAR(32)
-DETERMINISTIC
-NO SQL
-BEGIN
-  IF p_value IS NULL THEN
-    RETURN NULL;
-  END IF;
-
-  IF p_value >= 1100 THEN
-    RETURN 'Ally';
-  ELSEIF p_value >= 750 THEN
-    RETURN 'Warmly';
-  ELSEIF p_value >= 500 THEN
-    RETURN 'Kindly';
-  ELSEIF p_value >= 100 THEN
-    RETURN 'Amiable';
-  ELSEIF p_value >= 0 THEN
-    RETURN 'Indifferent';
-  ELSEIF p_value >= -100 THEN
-    RETURN 'Apprehensive';
-  ELSEIF p_value >= -500 THEN
-    RETURN 'Dubious';
-  ELSEIF p_value >= -750 THEN
-    RETURN 'Threateningly';
-  ELSE
-    RETURN 'Ready to Attack';
-  END IF;
-END
-""",
-  f"""
-CREATE FUNCTION {DB_PREFIX}_parse_classes_bitmask(p_mask INT)
-RETURNS TEXT
-DETERMINISTIC
-READS SQL DATA
-BEGIN
-  DECLARE v_out TEXT;
-
-  IF p_mask = 65535 THEN
-    RETURN 'ALL';
-  END IF;
-
-  IF p_mask IS NULL OR p_mask = 0 THEN
-    RETURN '';
-  END IF;
-
-  SELECT GROUP_CONCAT(c.short_name ORDER BY c.id SEPARATOR ' ')
-    INTO v_out
-  FROM {DB_PREFIX}_eqemu_classes c
-  WHERE c.category = 'player_class'
-    AND (p_mask & (1 << (c.id - 1))) <> 0;
-
-  RETURN COALESCE(v_out, '');
-END
-""",
-]
-
-def _drop_prefixed_functions(cur):
+def _drop_all_prefixed_functions(cur) -> int:
+  like = f"{DB_PREFIX}\\_%"
   cur.execute(
     """
     SELECT ROUTINE_NAME
-    FROM information_schema.routines
-    WHERE ROUTINE_SCHEMA = DATABASE()
-      AND ROUTINE_TYPE = 'FUNCTION'
-      AND LEFT(ROUTINE_NAME, CHAR_LENGTH(CONCAT(%s, '_'))) = CONCAT(%s, '_')
-    """,
-    (DB_PREFIX, DB_PREFIX)
+      FROM INFORMATION_SCHEMA.ROUTINES
+     WHERE ROUTINE_TYPE = 'FUNCTION'
+       AND ROUTINE_SCHEMA = DATABASE()
+       AND ROUTINE_NAME LIKE %s
+    """
+    , (like,),
   )
-  for row in cur.fetchall() or []:
-    name = row["ROUTINE_NAME"] if isinstance(row, dict) else row[0]
-    cur.execute(f"DROP FUNCTION IF EXISTS `{name}`")
-    logger.info(f"Dropped function `{name}`")
+  rows = cur.fetchall()
+  names = []
+  for row in rows:
+    name = row.get("ROUTINE_NAME") or row.get("routine_name")
+    if name is None:
+      try:
+        name = next(iter(row.values()))
+      except StopIteration:
+        name = None
+    if name:
+      names.append(name)
+
+  if not names:
+    logger.info("  - No prefixed functions to drop.")
+    return 0
+
+  dropped = 0
+  for fn in names:
+    cur.execute(f"DROP FUNCTION `{fn}`")
+    logger.info("  - Dropped function `%s`", fn)
+    dropped += 1
+
+  return dropped
+
+
+def _create_functions_from_files(cur) -> int:
+  files = _iter_sql_files()
+  created = 0
+  for path in files:
+    with open(path, "r", encoding="utf-8") as f:
+      sql = f.read()
+
+    m = _HDR_RE.search(sql)
+    if not m:
+      snippet = sql[:160].replace("\n", "\\n")
+      raise ValueError(f"CREATE FUNCTION header not found in {path}. First 160 chars: {snippet!r}")
+
+    orig_name = m.group(1)
+    final_name = _prefixed(orig_name)
+    sql = _rename_to_prefixed(sql, orig_name)
+    try:
+      cur.execute(sql)
+    except Exception as e:
+      raise e.__class__(f"{e} [function={final_name} file={path}]") from e
+
+    logger.info("  - Created function `%s`", final_name)
+    created += 1
+
+  return created
+
 
 def initializeFunctions(db):
-  logger.info("Initializing functions...")
-  created = 0
   with db.cursor() as cur:
-    cur.execute(
-      """
-      SELECT COUNT(*) AS cnt
-      FROM information_schema.routines
-      WHERE ROUTINE_SCHEMA = DATABASE()
-        AND ROUTINE_TYPE = 'FUNCTION'
-        AND LEFT(ROUTINE_NAME, CHAR_LENGTH(CONCAT(%s, '_'))) = CONCAT(%s, '_')
-      """,
-      (DB_PREFIX, DB_PREFIX)
-    )
-    row = cur.fetchone() or {}
-    to_drop = int((row["cnt"] if isinstance(row, dict) else row[0]) or 0)
-
-    _drop_prefixed_functions(cur)
-
-    for sql in FUNCTION_SQL:
-      m = re.search(r'CREATE\s+FUNCTION\s+`?([A-Za-z0-9_]+)`?', sql, re.IGNORECASE)
-      name = m.group(1) if m else None
-      cur.execute(sql)
-      created += 1
-      logger.info(f"Created function `{name}`" if name else "Created function")
-
-  db.commit()
-  logger.info(f"Functions init complete: dropped={to_drop}, created={created}.")
+    logger.info("Dropping functions...")
+    dropped = _drop_all_prefixed_functions(cur)
+    logger.info("Creating functions...")
+    created = _create_functions_from_files(cur)
+    db.commit()
+  logger.info("Functions sync complete: dropped=%d, created=%d.", dropped, created)

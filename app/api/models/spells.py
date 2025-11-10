@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 import pymysql.cursors
-from db import getDb, DB_PREFIX
+from db import getDb
 from api.models.npcs import get_npc_spawnpoints
 from api.models.characters import get_character
 from applogging import get_logger
@@ -417,7 +417,7 @@ def search_spells(query: str, limit: int = 20) -> List[Dict[str, Any]]:
     SELECT {SPELL_TABLE_SELECT_FIELDS}
     FROM spells_new s
     LEFT JOIN items i ON s.id = i.scrolleffect
-    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
     WHERE name LIKE %s
       AND (pis.lootdropEntries IS NOT NULL OR
           pis.merchantListEntries IS NOT NULL OR
@@ -452,7 +452,7 @@ def get_spells_for_character(charId: int) -> List[Dict[str, Any]]:
     FROM spells_new s
     LEFT JOIN items i ON s.id = i.scrolleffect
     LEFT JOIN character_spells cs ON s.id = cs.spell_id AND cs.id = %s
-    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
     WHERE s.{classColumn} > 0 AND s.{classColumn} <= %s AND
         (pis.lootdropEntries IS NOT NULL OR
           pis.merchantListEntries IS NOT NULL OR
@@ -472,7 +472,7 @@ def get_spell(spellId: int) -> Dict[str, Any]:
       SELECT {SPELL_TABLE_SELECT_FIELDS}
       FROM spells_new s
       LEFT JOIN items i ON s.id = i.scrolleffect
-      LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+      LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
       WHERE s.id = %s
       GROUP BY s.id
     """, (spellId,))
@@ -561,7 +561,7 @@ def get_spell_merchants(spellId: int) -> List[int]:
       SELECT pis.merchantListEntries
       FROM spells_new s
       JOIN items i ON i.scrolleffect = s.id
-      JOIN {DB_PREFIX}_item_sources pis ON pis.item_id = i.id
+      JOIN pok_item_sources pis ON pis.item_id = i.id
       WHERE s.id = %s
     """, (spellId,))
     row = cur.fetchone()
@@ -578,7 +578,7 @@ def get_spell_recipes(spellId: int) -> List[int]:
       SELECT pis.tradeskillRecipeEntries
       FROM spells_new s
       JOIN items i ON i.scrolleffect = s.id
-      JOIN {DB_PREFIX}_item_sources pis ON pis.item_id = i.id
+      JOIN pok_item_sources pis ON pis.item_id = i.id
       WHERE s.id = %s
     """, (spellId,))
     row = cur.fetchone()

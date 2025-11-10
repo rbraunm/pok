@@ -75,21 +75,16 @@ def initializeDbObjects():
   logger.info("Initializing database objects...")
   db = getDb()
 
-  from db.tables import initializeTables
-  from db.functions import initializeFunctions
-  from db.views import initializeViews
   from db.indexes import initializeIndexes
-  from db.procedures import initializeProcedures, callStoredProcedure
+  from db.functions import initializeFunctions
+  from db.tables import initializeTables
+  from db.views import initializeViews
 
-  # Build everything in dependency-safe order
-  initializeTables(db)
-  initializeFunctions(db)
-  initializeViews(db)
+  # Build structure in dependency-safe order
   initializeIndexes(db)
-  initializeProcedures(db)
-
-  # Populate derived data
-  callStoredProcedure(db, f"{DB_PREFIX}_populate_item_sources")
+  initializeFunctions(db)
+  initializeTables(db)
+  initializeViews(db)
 
   db.commit()
   logger.info("DB initialization completed.")

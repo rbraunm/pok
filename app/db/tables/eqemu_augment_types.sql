@@ -1,0 +1,36 @@
+CREATE TABLE `eqemu_augment_types` (
+  id SMALLINT PRIMARY KEY,
+  `description` VARCHAR(255) NOT NULL
+) COMMENT='Augment types';
+
+INSERT INTO `eqemu_augment_types` (id, `description`) VALUES
+  (1 , 'General: Single Stat'),
+  (2 , 'General: Multiple Stat'),
+  (3 , 'General: Spell Effect'),
+  (4 , 'Weapon: General'),
+  (5 , 'General: Multiple Stat'),
+  (6 , 'Weapon: Base Damage'),
+  (7 , 'General: Group'),
+  (8 , 'General: Raid'),
+  (9 , 'General: Dragons Points'),
+  (10, 'Crafted: Common'),
+  (11, 'Crafted: Group'),
+  (12, 'Cultural: Raid'),
+  (13, 'Energeiac: Group'),
+  (14, 'Energeiac: Raid'),
+  (15, 'Emblem'),
+  (16, 'Crafted: Group'),
+  (17, 'Crafted: Raid'),
+  (18, ''),
+  (19, ''),
+  (20, 'Ornamentation'),
+  (21, 'Special Ornamentation'),
+  (22, ''),
+  (23, ''),
+  (24, ''),
+  (25, ''),
+  (26, ''),
+  (27, ''),
+  (28, ''),
+  (29, ''),
+  (30, 'Weapon: Epic 2.5');

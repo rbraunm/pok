@@ -87,14 +87,6 @@ INDEX_DEFS = [
   # zone
   ("zone", "shortname_filters",
     ["short_name","cancombat","min_status","expansion","min_expansion","max_expansion"]),
-
-  # {DB_PREFIX}_item_sources
-  (f"{DB_PREFIX}_item_sources", "lootdrop_notnull", ["lootdropEntries(192)"]),
-  (f"{DB_PREFIX}_item_sources", "merchant_notnull", ["merchantListEntries(192)"]),
-  (f"{DB_PREFIX}_item_sources", "quest_notnull", ["questEntries(192)"]),
-  (f"{DB_PREFIX}_item_sources", "recipe_notnull", ["tradeskillRecipeEntries(192)"]),
-  (f"{DB_PREFIX}_item_sources", "item_sources_cols",
-    ["lootdropEntries(192)", "merchantListEntries(192)", "tradeskillRecipeEntries(192)", "questEntries(192)"]),
 ]
 
 def _parseColSpec(colSpec):
@@ -220,11 +212,11 @@ def _createIndex(cur, table, idxName, cols, non_unique):
   colSQL = _colListSQL(cols)
   stmtType = "CREATE INDEX" if int(non_unique) == 1 else "CREATE UNIQUE INDEX"
   cur.execute(f"{stmtType} `{idxName}` ON `{table}` ({colSQL})")
-  logger.info(f"Created index `{idxName}` on `{table}` ({colSQL})")
+  logger.info(f"  - Created index `{idxName}` on `{table}` ({colSQL})")
 
 def _dropIndex(cur, table, idxName, why):
   cur.execute(f"DROP INDEX `{idxName}` ON `{table}`")
-  logger.info(f"Dropped index `{idxName}` on `{table}` ({why})")
+  logger.info(f"  - Dropped index `{idxName}` on `{table}` ({why})")
 
 def syncIndexes(db):
   desired = _desiredMap()
@@ -250,11 +242,11 @@ def syncIndexes(db):
 
         dupe = _findFunctionalDuplicate(allExisting, table, want["cols"], want["non_unique"], skipName=idxName)
         if dupe:
-          logger.warning(f"Skipping index `{idxName}` on `{table}`: functional duplicate exists `{dupe}`")
+          logger.warning(f"  - Skipping index `{idxName}` on `{table}`: functional duplicate exists `{dupe}`")
           continue
 
         if have and _cmpCols(have["cols"], want["cols"]) and int(have["non_unique"]) == int(want["non_unique"]):
-          logger.info(f"Index `{idxName}` on `{table}` is up-to-date; skipping")
+          logger.info(f"  - Index `{idxName}` on `{table}` is up-to-date; skipping")
           continue
 
         if have:

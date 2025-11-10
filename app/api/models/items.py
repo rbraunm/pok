@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 import pymysql.cursors
-from db import getDb, DB_PREFIX
+from db import getDb
 from applogging import get_logger
 logger = get_logger(__name__)
 
@@ -272,7 +272,7 @@ def get_spell_options_for(kind: str) -> List[Dict[str, Any]]:
   sql = f"""
     SELECT DISTINCT i.{col} AS id, s.name
     FROM items i
-    JOIN {DB_PREFIX}_item_sources pis ON pis.item_id = i.id
+    JOIN pok_item_sources pis ON pis.item_id = i.id
     JOIN spells_new s ON s.id = i.{col}
     WHERE i.{col} IS NOT NULL
       AND i.{col} > 0
@@ -404,7 +404,7 @@ def search_items_filtered(
         THEN 1 ELSE 0
       END AS unobtainable
     FROM items i
-    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
     LEFT JOIN spells_new fs ON i.focuseffect = fs.id
     LEFT JOIN spells_new cs ON i.clickeffect = cs.id
     LEFT JOIN spells_new ps ON i.proceffect  = ps.id
@@ -417,7 +417,7 @@ def search_items_filtered(
   countSql = f"""
     SELECT COUNT(*)
     FROM items i
-    LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+    LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
     WHERE {whereClause}
   """
 
@@ -449,7 +449,7 @@ def get_item(itemId: int) -> Dict[str, Any]:
           THEN 1 ELSE 0
         END AS unobtainable
       FROM items i
-      LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+      LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
       LEFT JOIN spells_new fs ON i.focuseffect = fs.id
       LEFT JOIN spells_new cs ON i.clickeffect = cs.id
       LEFT JOIN spells_new ps ON i.proceffect = ps.id

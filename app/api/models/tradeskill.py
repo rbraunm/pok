@@ -1,5 +1,5 @@
 from typing import Dict, List
-from db import getDb, DB_PREFIX
+from db import getDb
 from api.models.eqemu import get_current_expansion
 from applogging import get_logger
 logger = get_logger(__name__)
@@ -215,7 +215,7 @@ def get_skill_up_recipes(skillId, skillLevel):
       LEFT JOIN tradeskill_recipe_entries tre ON tr.id = tre.recipe_id
       LEFT JOIN items i ON tre.item_id = i.id
       LEFT JOIN container_map cm ON tre.item_id = cm.object_type_id
-      LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+      LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
       WHERE tr.tradeskill = %s
         AND tr.skillneeded <= %s
         AND tr.trivial > %s
@@ -260,7 +260,7 @@ def get_item_recipes(itemId: int) -> List[Dict]:
       JOIN tradeskill_recipe_entries tre ON tr.id = tre.recipe_id
       LEFT JOIN items i ON tre.item_id = i.id
       LEFT JOIN container_map cm ON tre.item_id = cm.object_type_id
-      LEFT JOIN {DB_PREFIX}_item_sources pis ON i.id = pis.item_id
+      LEFT JOIN pok_item_sources pis ON i.id = pis.item_id
       WHERE tr.enabled = 1
         AND (tr.min_expansion <= %s)
         AND (tr.max_expansion = -1 OR tr.max_expansion >= %s)

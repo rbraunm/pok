@@ -1,0 +1,15 @@
+items_source_account_claims.sql
+items_source_begging.sql
+items_source_crafted.sql
+items_source_fished.sql
+items_source_foraged.sql
+items_source_global_loot.sql
+items_source_ground_spawns.sql
+items_source_instance_chest_rewards.sql
+items_source_object_chest_loot.sql
+items_source_pickpocket.sql
+items_source_quest_granted.sql
+items_source_scripted_ground_objects.sql
+items_source_starting_items.sql
+items_source_summoned_by_spells.sql
+items_source_task_rewards.sql
