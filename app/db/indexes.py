@@ -11,7 +11,7 @@ INDEX_DEFS = [
   # loottable_entries
   ("loottable_entries", "lootdrop_id", ["lootdrop_id"]),
   ("loottable_entries", "loottable_id", ["loottable_id"]),
-  ("loottable_entries", "lootdrop_loottable", ["lootdrop_id", "loottable_id"]),
+  ("loottable_entries", "lootdrop_loottable", ["loottable_id", "lootdrop_id"]),
 
   # merchantlist
   ("merchantlist", "item_minexp_maxexp", ["item", "min_expansion", "max_expansion"]),
@@ -24,6 +24,11 @@ INDEX_DEFS = [
   ("npc_types", "name", ["name"]),
   ("npc_types", "raid_target", ["raid_target"]),
   ("npc_types", "rare_spawn", ["rare_spawn"]),
+  ("npc_types", "npc_spells_id", ["npc_spells_id"]),
+  ("npc_types", "npc_spells_effects_id", ["npc_spells_effects_id"]),
+  ("npc_types", "npc_emoteid", ["emoteid"]),
+  ("npc_types", "npc_faction_id", ["npc_faction_id"]),
+
 
   # spawnentry
   ("spawnentry", "npcID", ["npcID"]),
@@ -66,6 +71,23 @@ INDEX_DEFS = [
   ("lootdrop_entries", "itemid_lootdropid", ["item_id", "lootdrop_id"]),
   ("lootdrop_entries", "itemid_chance", ["item_id", "chance"]),
   ("lootdrop_entries", "lootdropid_minmaxexp", ["lootdrop_id", "min_expansion", "max_expansion"]),
+  ("lootdrop_entries", "lootdropid_itemid", ["lootdrop_id", "item_id"]),
+
+  # npc_spells_entries
+  ("npc_spells_entries", "npc_spells_priority_spell",
+   ["npc_spells_id", "priority", "spellid"]),
+
+  # npc_spells_effects_entries
+  ("npc_spells_effects_entries", "effects_group_order",
+   ["npc_spells_effects_id", "id"]),
+
+  # npc_emotes
+  ("npc_emotes", "emoteid_event_id",
+   ["emoteid", "event_", "id"]),
+
+  # npc_faction_entries
+  ("npc_faction_entries", "npcfaction_faction",
+   ["npc_faction_id", "faction_id"]),
 
   # character_spells
   ("character_spells", "spell_id_char_id", ["spell_id", "id"]),

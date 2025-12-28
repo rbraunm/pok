@@ -12,10 +12,17 @@ TABLES_SQL_DIR = os.path.join(HERE, "tables")
 # ===== Regex (case-insensitive) =====
 # Capture the table name in a CREATE TABLE header
 _HDR_RE = re.compile(r"CREATE\s+TABLE\s+`?([A-Za-z0-9_]+)`?", flags=re.IGNORECASE)
-# Rewrite the identifier in the CREATE header while preserving "CREATE TABLE "
-_CREATE_RE = re.compile(r"(CREATE\s+TABLE\s+)`?[A-Za-z0-9_]+`?", flags=re.IGNORECASE)
-# Match exactly "INSERT INTO <name>" and capture the leading prefix for safe replacement
-_INS_INTO_TARGET_RE_TMPL = r"(?i)(\bINSERT\s+INTO\s+)`?{name}`?"
+
+def _expected_prefix() -> str:
+  return f"{DB_PREFIX}_"
+
+def _require_prefixed(name: str, path: str, kind: str):
+  pref = _expected_prefix()
+  if not name.startswith(pref):
+    raise ValueError(
+      f"{kind} name must start with '{pref}' in {path}. Found '{name}'."
+    )
+
 # Strip any number of leading comments and whitespace:
 #  - line comments: -- ... (to end of line)
 #  - block comments: /* ... */
@@ -24,17 +31,6 @@ _LEADING_COMMENTS_RE = re.compile(
   flags=re.DOTALL | re.MULTILINE
 )
 
-def _prefixed(name: str) -> str:
-  pref = f"pok_"
-  return name if name.startswith(pref) else f"{pref}{name}"
-
-def _rewrite_insert_targets(sql: str, orig_name: str, final_name: str) -> str:
-  """
-  Rewrite every 'INSERT INTO <orig_name>' occurrence to 'INSERT INTO `<final_name>`'.
-  Preserves spacing and everything after the target identifier.
-  """
-  pat = re.compile(_INS_INTO_TARGET_RE_TMPL.format(name=re.escape(orig_name)))
-  return pat.sub(r"\1`" + final_name + "`", sql)
 
 def _split_sql_statements(sql: str):
   parts, buf = [], []
@@ -175,19 +171,15 @@ def _create_and_seed_tables_from_files(cur):
     m = _HDR_RE.search(sql)
     if not m:
       raise ValueError(f"No CREATE TABLE <name> found in {path}")
-    orig_name = m.group(1)
-    final_name = _prefixed(orig_name)
-
-    # 1) Rewrite the CREATE header
-    sql = _CREATE_RE.sub(r"\1`" + final_name + "`", sql, count=1)
-    # 2) Rewrite any explicit INSERT INTO targets (for data files)
-    sql = _rewrite_insert_targets(sql, orig_name, final_name)
+    table_name = m.group(1)
+    _require_prefixed(table_name, path, "Table")
 
     statements = _split_sql_statements(sql)
     if not statements:
       continue
 
-    logger.info("  - Creating `%s` from %s", final_name, os.path.basename(path))
+    logger.info("  - Creating `%s` from %s", table_name, os.path.basename(path))
+
     seen_create = False
     seeded_this_table = 0
 
@@ -206,7 +198,7 @@ def _create_and_seed_tables_from_files(cur):
         continue
 
       if upper.startswith("SELECT") and seen_create:
-        insert_stmt = _wrap_select_as_insert(cur, lead, final_name)
+        insert_stmt = _wrap_select_as_insert(cur, lead, table_name)
         seeded_this_table += max(0, _exec_insert_and_rowcount(cur, insert_stmt))
         continue
 
@@ -214,9 +206,10 @@ def _create_and_seed_tables_from_files(cur):
       cur.execute(stmt)
 
     total_seeded += seeded_this_table
-    logger.info("    -> Seeded `%s` (%d rows)", final_name, seeded_this_table)
+    logger.info("    -> Seeded `%s` (%d rows)", table_name, seeded_this_table)
 
   return created, total_seeded
+
 
 def initializeTables(db):
   with db.cursor() as cur:

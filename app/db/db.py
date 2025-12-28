@@ -79,12 +79,14 @@ def initializeDbObjects():
   from db.functions import initializeFunctions
   from db.tables import initializeTables
   from db.views import initializeViews
+  from db.procedures import initializeProcedures
 
   # Build structure in dependency-safe order
   initializeIndexes(db)
   initializeFunctions(db)
   initializeTables(db)
   initializeViews(db)
+  initializeProcedures(db)
 
   db.commit()
   logger.info("DB initialization completed.")

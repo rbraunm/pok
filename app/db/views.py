@@ -20,9 +20,17 @@ _LEADING_COMMENTS_RE = re.compile(
 def _strip_leading_comments(sql: str) -> str:
   return _LEADING_COMMENTS_RE.sub("", sql, count=1).lstrip()
 
-def _prefixed(name: str) -> str:
-  pref = f"pok_"
-  return name if name.startswith(pref) else f"{pref}{name}"
+
+def _expected_prefix() -> str:
+  return f"{DB_PREFIX}_"
+
+def _require_prefixed(name: str, path: str, kind: str):
+  pref = _expected_prefix()
+  if not name.startswith(pref):
+    raise ValueError(
+      f"{kind} name must start with '{pref}' in {path}. Found '{name}'."
+    )
+
 
 def _sanitize_basename(basename: str) -> str:
   """
@@ -98,7 +106,8 @@ def _create_views_from_files(cur) -> int:
       body = body[:-1].rstrip()
 
     base = _sanitize_basename(os.path.basename(path))
-    final_name = _prefixed(base)
+    _require_prefixed(base, path, "View filename")
+    final_name = base
 
     create_sql = f"CREATE VIEW `{final_name}` AS\n{body};"
 

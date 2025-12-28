@@ -10,17 +10,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FUNCTIONS_SQL_DIR = os.path.join(HERE, "functions")
 
 _HDR_RE = re.compile(r"CREATE\s+FUNCTION\s+`?([A-Za-z0-9_]+)`?", flags=re.IGNORECASE)
-_CREATE_RE = re.compile(r"(CREATE\s+FUNCTION\s+)`?[A-Za-z0-9_]+`?", flags=re.IGNORECASE)
 
 
-def _prefixed(name: str) -> str:
-  pref = f"pok_"
-  return name if name.startswith(pref) else f"{pref}{name}"
+def _expected_prefix() -> str:
+  return f"{DB_PREFIX}_"
 
 
-def _rename_to_prefixed(sql: str, orig_name: str) -> str:
-  # Replace only the first function name in the CREATE header (case-insensitive)
-  return _CREATE_RE.sub(lambda m: f"{m.group(1)}`{_prefixed(orig_name)}`", sql, count=1)
+def _require_prefixed(name: str, path: str, kind: str):
+  pref = _expected_prefix()
+  if not name.startswith(pref):
+    raise ValueError(
+      f"{kind} name must start with '{pref}' in {path}. Found '{name}'."
+    )
 
 
 def _iter_sql_files():
@@ -76,15 +77,15 @@ def _create_functions_from_files(cur) -> int:
       snippet = sql[:160].replace("\n", "\\n")
       raise ValueError(f"CREATE FUNCTION header not found in {path}. First 160 chars: {snippet!r}")
 
-    orig_name = m.group(1)
-    final_name = _prefixed(orig_name)
-    sql = _rename_to_prefixed(sql, orig_name)
+    func_name = m.group(1)
+    _require_prefixed(func_name, path, "Function")
+
     try:
       cur.execute(sql)
     except Exception as e:
-      raise e.__class__(f"{e} [function={final_name} file={path}]") from e
+      raise e.__class__(f"{e} [function={func_name} file={path}]") from e
 
-    logger.info("  - Created function `%s`", final_name)
+    logger.info("  - Created function `%s`", func_name)
     created += 1
 
   return created
