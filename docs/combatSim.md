@@ -15,7 +15,8 @@ Melee first. Spell/DoT damage is a later phase.
 ## Ground truth
 
 The simulation models the EQEmu ruleset as configured in the database PoK is attached to.
-That means the numbers come from the server's own data, not from hardcoded constants:
+Rules are read directly from the database at runtime -- never copied into code, config,
+or fixtures. If the server operator changes a rule, the sim reflects it on the next run:
 
 - `rule_values` -- combat-relevant server rules for the active ruleset.
 - `skill_caps` -- per-class, per-level skill caps (offense, weapon skills, double attack,
@@ -87,8 +88,8 @@ a different database.
 ## Where to begin
 
 1. Rule and cap loaders: enumerate which `rule_values` and `skill_caps` rows the melee
-   model actually needs, and load them. This forces the first real contact with the
-   attached ruleset and will surface gaps early.
+   model actually needs, and load them live from the DB. This forces the first real
+   contact with the attached ruleset and will surface gaps early.
 2. Single-swing resolution: to-hit, avoidance, mitigation, damage roll for one main hand
    swing, warrior vs. warrior. Verified empirically against the target server before
    layering anything on top.
